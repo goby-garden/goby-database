@@ -1,0 +1,15 @@
+{
+  "name": "goby-database",
+  "version": "1.0.0",
+  "description": "This will hold the core better-sqlite3-powered application for creating and modifying goby databases",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Nico Chilla",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^8.5.0"
+  },
+  "type": "module"
+}
