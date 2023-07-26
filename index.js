@@ -170,26 +170,8 @@ class Project{
             ...participants
         ]
 
-        if(!junction_id){
-            //IF no suitable existing junction table, create a new one:
-            //sql column strings for create table
-            const columns=[];
+       
 
-            //add string for each participant in junction
-            for (const el of participants) {
-                //if the class doesn't exist yet, create it and return the new class ID
-                if(el.class_id==null){
-                    el.class_id=this.createTable('class',el.class_name);
-                }
-                columns.push(`class_${el.class_id} INTEGER`);
-            }
-        }
-
-        // for each participant:
-        // 
-        // - if linked, linked property
-        // - if linked, define targets for property
-        // 
     }
 
 
