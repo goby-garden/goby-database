@@ -2,9 +2,9 @@
 
 ### Present to-do:
 
-- [ ] set up comparison of old targets to the new targets in `configure_relation_targets` so I don't have to rely on the changes being passed in from the front-end
-- [ ] for `case 'unlink'` in `clean_up_junctions`, have any non-existent one-sided junction tables created on the spot
-- [ ] write a new class retrieval function that groups relations so each relation property is an array of objects with the format: `{class_id:X,prop_id:X,object_id:X}`
+- [x] set up comparison of old targets to the new targets in `configure_relation_targets` so I don't have to rely on the changes being passed in from the front-end
+- [x] for `case 'unlink'` in `clean_up_junctions`, have any non-existent one-sided junction tables created on the spot
+- [x] write a new class retrieval function that groups relations so each relation property is an array of objects with the format: `{class_id:X,prop_id:X,object_id:X}`
 - [ ] use new class retrieval function to perform validation and make sure all relations in a junction at least abide by the `max` set for that function
 
 
@@ -148,6 +148,11 @@
 * relation-select reactivity: instead of some array-copying madness, just have the selector set to the current items as an event, fired with every data update
 * editing relations:
     * I think I'm going to narrow from the previous iteration of the relation creator/editor so you can only configure one relation at a time, meaning you can't edit the constraints on the other relations
+* since a system-wide undo/redo could be quite difficult to implement, an alternative could be using transactions, so after making a change, particularly a table structure change, you would be prompted to commit or reject changes
+    * MAYBE there could even be an enterable "transaction mode", in which you make a variety of changes, and then make a decision about whether to accept or reject them.
+
+### Misplaced general organization thoughts:
+* maybe the website can have a kind of "timeline" pulling in the goby are.na channels using the api, letting you drag a slider to move forward/backward in the notes i take about it, which appear as a scattered collage
 
 
 
@@ -161,7 +166,9 @@ Basic:
 - [ ] delete a row from a class
     - deal with relation fall-out
 - [ ] add a data property to a class
-- [ ] delete a data property from a class
+- [ ] delete a property from a class
+    - not allowed if class only has one property
+    - deal with fallout if that class is the label
 
 Relation properties — test the following actions/options in relevant combinations with each other:
 - [ ] adding a new relation prop
@@ -174,3 +181,29 @@ Relation properties — test the following actions/options in relevant combinati
 
 Returning data:
 - [ ] return relation props in the format specified in _Return format for relation properties_
+
+
+
+
+```
+WITH cte AS (SELECT person, ('[' || GROUP_CONCAT(clothing,',') || ']') AS clothing
+  FROM (
+    
+    SELECT person, json_object('type','shirt','id',shirts) AS clothing
+    FROM junction_shirts
+
+    UNION
+
+    SELECT person, json_object('type','pant','id',pants) AS clothing
+    FROM junction_pants
+
+    UNION
+
+    SELECT person, json_object('type','shoe','id',shoes) AS clothing
+    FROM junction_shoes)
+GROUP BY person)
+SELECT p.id, p.name, c.clothing
+FROM people p LEFT JOIN cte c
+ON c.person = p.id;
+
+```

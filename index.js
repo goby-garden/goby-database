@@ -26,7 +26,7 @@ class Project{
             begin:this.db.prepare('BEGIN IMMEDIATE'),
             commit:this.db.prepare('COMMIT'),
             rollback:this.db.prepare('ROLLBACK'),
-            get_class:this.db.prepare(`SELECT name,metadata FROM system_classlist WHERE id = ?`),
+            get_class:this.db.prepare(`SELECT name, metadata FROM system_classlist WHERE id = ?`),
             get_class_id:this.db.prepare(`SELECT id FROM system_classlist WHERE name = ?`),
             save_class_meta:this.db.prepare(`UPDATE system_classlist set metadata = ? WHERE id = ?`),
             match_junction:this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a = @input_1 AND side_b = @input_2 ) OR ( side_a = @input_2 AND side_b = @input_1 )`),
@@ -34,7 +34,6 @@ class Project{
         }
 
 
-        // SELECT id, metadata FROM system_junctionlist WHERE (side_a = @input_1 AND side_b = @input_2 ) OR ( side_a = @input_2 AND side_b = @input_1 )
         
         //if I understand transactions correctly, a new one will begin with every user action while committing the one before, meaning I'll need to have the first begin here
         //this enables a one-step undo.
@@ -62,19 +61,8 @@ class Project{
             'metadata TEXT'
         ]);
 
-        
-        // db.function('relation_list', { deterministic: true }, (target_id,concat_ids) => {
-        //     let ids=concat_ids.split(',');
-        //     let return_val=[];
-        //     for(let id of ids){
-        //         return_val.push(`{"target_id":${target_id},"object_id":${id}},`);
-        //     }
-        // });
 
-        this.db.aggregate('relation_objects', {
-            start: '',
-            step: (total, next_id, target_id) => total + `{"target_id":${target_id},"object_id":${next_id}},`
-          });
+   
         
     }
 
@@ -266,23 +254,65 @@ class Project{
             }
             target.junction_id=this.run.match_junction.get(sides)?.id;
             
-            if(target.junction_id==undefined){
-                // adds new record to junction table
-                this.db.prepare(`INSERT INTO system_junctionlist (side_a, side_b) VALUES ('${sides.input_1}','${sides.input_2}')`).run();
-                //gets id of new record
-                target.junction_id=this.db.prepare('SELECT id FROM system_junctionlist ORDER BY id DESC').get().id;
-                this.create_table('junction',target.junction_id,[
-                    `"${sides.input_1}" INTEGER`,
-                    `"${sides.input_2}" INTEGER`
-                ]);
-            }
+            if(target.junction_id==undefined) target.junction_id=this.create_junction_table(sides);
             
         }
 
         // compare old targets and current targets
-            // loop through old targets and see if any have been deleted
-            // loop through new targets and see if any that aren't new became newly linked or unlinked
+            // loop through old targets and see if any have been deleted, see if any that aren't new became newly linked or unlinked, or linked to a different prop
 
+        if(!junction_changes) junction_changes=[];
+        
+        for(let old_target of old_targets){
+            if(old_target.class_id){
+                let class_match=targets.find(a=>a.class_id==old_target.class_id);
+
+                if(!class_match){
+                    junction_changes.push({
+                        type:'delete',
+                        participants:[
+                            {class_id,prop_id},
+                            {class_id:old_target.class_id,prop_id:old_target.prop_id}
+                        ]
+                    })
+                }else if(class_match.prop_id&&!old_target.prop_id){
+                    //link previously unlinked
+                    junction_changes.push({
+                        type:'link',
+                        participants:[
+                            {class_id,prop_id},
+                            {class_id:old_target.class_id,prop_id:class_match.prop_id}
+                        ]
+                    })
+                }else if(!class_match.prop_id&&old_target.prop_id){
+                    //delink previously linked
+                    junction_changes.push({
+                        type:'unlink',
+                        participants:[
+                            {class_id,prop_id},
+                            {class_id:old_target.class_id,prop_id:old_target.prop_id}
+                        ]
+                    })
+                }else if(class_match.prop_id!==old_target.prop_id){
+                    //transfer link
+                    junction_changes.push({
+                        type:'transfer link',
+                        participants:[
+                            {class_id,prop_id},
+                            {class_id:old_target.class_id,prop_id:class_match.prop_id}
+                        ],
+                        old_participants:[
+                            {class_id,prop_id},
+                            {class_id:old_target.class_id,prop_id:old_target.prop_id}
+                        ]
+                    })
+                }
+            }
+            
+
+
+        }
+      
 
 
         prop_meta.targets=targets;
@@ -311,6 +341,23 @@ class Project{
     }
 
 
+    create_junction_table(sides){
+        // adds new record to junction table
+        this.db.prepare(`INSERT INTO system_junctionlist (side_a, side_b) VALUES ('${sides.input_1}','${sides.input_2}')`).run();
+
+        //gets id of new record
+        let id=this.db.prepare('SELECT id FROM system_junctionlist ORDER BY id DESC').get().id;
+
+        // creates table
+        this.create_table('junction',id,[
+            `"${sides.input_1}" INTEGER`,
+            `"${sides.input_2}" INTEGER`
+        ]);
+
+        return id;
+    }
+
+
     clean_up_junctions(changes){
         // this function does not create junction tables. it only transfers connections from old junction tables and deletes them.
         /* changes=[
@@ -330,15 +377,19 @@ class Project{
             let p2=change.participants[1];
             
             let side_1,side_2,linked;
-            if(change.type=='link'||change.type=='unlink'){
-                side_1=this.run.match_junction.get({
-                    input_1: `${p1.class_id}.${p1.prop_id}`,
-                    input_2:`${p2.class_id}.`
-                });
-                side_2=this.run.match_junction.get({
-                    input_1: `${p2.class_id}.${p2.prop_id}`,
-                    input_2:`${p1.class_id}.`
-                });
+
+            let s1_input={
+                input_1: `${p1.class_id}.${p1.prop_id}`,
+                input_2:`${p2.class_id}.`
+            };
+            let s2_input={
+                input_1: `${p2.class_id}.${p2.prop_id}`,
+                input_2:`${p1.class_id}.`
+            };
+
+            if(change.type=='link'||change.type=='unlink'||change.type=='transfer link'){
+                side_1=this.run.match_junction.get(s1_input);
+                side_2=this.run.match_junction.get(s2_input);
                 linked=this.run.match_junction.get({
                     input_1: `${p1.class_id}.${p1.prop_id}`,
                     input_2:`${p2.class_id}.${p2.prop_id}`
@@ -363,17 +414,33 @@ class Project{
                     
                 break;
                 case 'unlink':
-                     //two previously linked properties become de-linked, while possibly staying connected to each other's classes, so the linked connection should be transferred if those tables exist
+                    //two previously linked properties become de-linked, while possibly staying connected to each other's classes, so the linked connection should be transferred if those tables exist
                     
-                     // in this case you may need to create the table for side_2 
-
-
+                    if(!side_1){
+                        target.junction_id=this.create_junction_table(s1_input);
+                        side_1=this.run.match_junction.get(s1_input);
+                    }
+                    if(!side_2){
+                        target.junction_id=this.create_junction_table(s2_input);
+                        side_2=this.run.match_junction.get(s2_input);
+                    }
+                    
                     if(linked){
-                        if(side_1) transfer_junction_relations(linked,side_1);
-                        if(side_2) transfer_junction_relations(linked,side_2);
+                        transfer_junction_relations(linked,side_1);
+                        transfer_junction_relations(linked,side_2);
 
                         delete_junction_table(linked.id);
                     }
+                break;
+                case 'transfer link':
+                    let p3=old_participants[0];
+                    let old_linked=this.run.match_junction.get({
+                        input_1: `${p1.class_id}.${p1.prop_id}`,
+                        input_2:`${p2.class_id}.${p2.prop_id}`
+                    });
+                    transfer_junction_relations(old_linked,linked);
+
+
                 break;
                 case 'delete':
                     //a former connection of any kind has been deleted (neither side targets one another), so a table has to be removed
@@ -395,12 +462,12 @@ class Project{
     transfer_junction_relations(source,target){
         let source_relations=this.db.prepare(`SELECT * FROM junction_${source.id}`).all();
         
+        //have to match source sides to target sides in order to determine junction order
         let source_sides=source.side_a.split('.')[0] == target.side_a.split('.')[0]?
             [source.side_a,source.side_b]:[source.side_b,source.side_a];
 
         for(let relation of source_relations){
-            //have to match source sides to target sides in order to determine junction order
-
+            
             this.db.prepare(`INSERT INTO junction_${target.id}("${target.side_a}","${target.side_b}") 
             VALUES(${ relation[source_sides[0]]},${ relation[source_sides[1]]})`).run();
         }
@@ -468,6 +535,92 @@ class Project{
         this.db.prepare(`INSERT INTO junction_${junction_id} ("${sides.input_1}", "${sides.input_2}") VALUES (${input_1.object_id},${input_2.object_id})`).run();
         
     }
+
+
+    retrieve_class(class_id,class_name,class_meta){
+        if(class_name==undefined){
+            let class_data=this.run.get_class.get(class_id);
+            // console.log(class_data)
+            class_name=class_data.name;
+            class_meta=JSON.parse(class_data.metadata)
+        };
+
+        const class_string=`[class_${class_name}]`;
+
+        // //joined+added at beginning of the query, built from relations
+        const cte_strings=[];
+
+        // //joined+added near the end of the query, built from relations
+        const cte_joins=[];
+
+        // //joined+added between SELECT and FROM, built from relations
+        const relation_selections=[];
+
+        let relation_properties=class_meta.properties.filter(a=>a.type=='relation');
+
+        for (let prop of relation_properties){
+            const target_selects=[];
+            const target_joins=[];
+            let p_side=`${class_id}.${prop.id}`;
+            let first=prop.targets[0];
+
+            for(let i = 0; i < prop.targets.length; i++){
+                let target=prop.targets[i];
+                let t_side=`${target.class_id}.${target.prop_id || ''}`;
+
+                let target_select=`
+                SELECT "${p_side}", json_object('target_id','${target.class_id}','id',"${t_side}") AS json_object
+                FROM junction_${target.junction_id}`
+                target_selects.push(target_select);
+            }
+
+            const cte=`[${prop.id}_cte] AS (
+                SELECT "${p_side}", ('[' || GROUP_CONCAT(json_object,',') || ']') AS [user_${prop.name}]
+                FROM (${target_selects.join(' UNION ')})
+                GROUP BY "${p_side}"
+            )`
+            
+            cte_strings.push(cte);
+            relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
+            cte_joins.push(`LEFT JOIN [${prop.id}_cte] ON [${prop.id}_cte]."${p_side}" = ${class_string}.system_id`)
+
+        }
+
+        let orderby=`ORDER BY ${class_string}.system_order`;
+
+        let query=`
+            ${cte_strings.length>0?"WITH "+cte_strings.join(','):''}
+            SELECT [class_${class_name}].* ${cte_strings.length>0?', '+relation_selections.join(`, `):''}
+            FROM [class_${class_name}]
+            ${cte_joins.join(' ')}
+            ${orderby}`;
+        
+        let objects=this.db.prepare(query).all();
+
+        let stringified_properties=class_meta.properties.filter(a=>a.type=='relation'||a.conditions?.max>1);
+        objects.map(row=>{
+          for (let prop of stringified_properties){
+            row['user_'+prop.name]=JSON.parse(row['user_'+prop.name]);
+          }
+        })
+        return {
+            objects,
+            metadata:class_meta,
+            name:class_name
+        };
+    }
+
+    retrieve_all_classes(){
+        const classes_data=this.db.prepare(`SELECT id, name, metadata FROM system_classlist`).all();
+        // console.log(classes)
+        let classes=[];
+        for(let cls of classes_data){
+          classes.push(this.retrieve_class(cls.id,cls.name,JSON.parse(cls.metadata)));
+        }
+
+        return classes;
+    }
+
 
 }
 
