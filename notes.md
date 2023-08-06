@@ -1,6 +1,6 @@
 # goby-database notes
 
-Present to-do:
+### Present to-do:
 
 - [ ] set up comparison of old targets to the new targets in `configure_relation_targets` so I don't have to rely on the changes being passed in from the front-end
 - [ ] for `case 'unlink'` in `clean_up_junctions`, have any non-existent one-sided junction tables created on the spot
@@ -8,7 +8,7 @@ Present to-do:
 - [ ] use new class retrieval function to perform validation and make sure all relations in a junction at least abide by the `max` set for that function
 
 
-Things this program should be able to do:
+### Things this program should be able to do:
 
 * initialization
     * check if system tables exist, if not, create:
@@ -58,7 +58,7 @@ Things this program should be able to do:
     * deleting rows, columns, and classes
         * for relational properties, the related class should have the option of dropping their column, converting to a string, or (if they're connected to other existing classes) just removing those relations
 
-Stored data
+### Stored data
 * class metadata:
     * functional:
         * properties
@@ -71,13 +71,13 @@ Stored data
         * its color
 
 
-Core concepts:
+### Core concepts:
 * relations types are a unit, embodied by a junction table
     * they define a type of property, shared across its constituent classes
 
 
 
-Junction tables
+### Junction tables
 
 * the targeting problem in the old system(see [ref](https://www.are.na/block/17459572)):
     * when you make a relation, you can pick multiple targets. the question is: can those targets have each other as possible relations? in other words, can that junction table host relationships not involving the class on which the junction was initiated?
@@ -106,7 +106,7 @@ Junction tables
     * this doesn't work because the conditions are supposed to determine candidates for a relation, and if this is a condition then a single select will have no candidates
 
 
-### Junction table decision flow
+#### Junction table decision flow
 
 * Q: does the exact match of classA.property to classB[.property] (or inverse) exist?
     * A: no
@@ -124,17 +124,17 @@ Junction tables
 
 
 
-Return format for relation properties:
+### Return format for relation properties:
 * for each row, an array of the objects its connected to, in the format: `{class_id:X,prop_id:X,object_id:X}`
 
 
-Names versus IDs:
+### Names versus IDs:
 * One goal is to make the sql database on its own basically legible
 * However, without care, names will run amuck and renaming something will require changing the name in a thousand places. 
 * The approach to this for classes and properties will be to have their names on the actual tables and columns, and their IDs in places where metadata for classes is stored, so at most you only need to change their name in two places
 
 
-development:
+### Development thoughts:
 
 * the idea is this package will be imported as a module into the application
     * https://stackoverflow.com/questions/15806241/how-to-specify-local-modules-as-npm-package-dependencies
@@ -144,7 +144,7 @@ development:
 * for class retrieval, possibly create a [custom aggregate function](https://github.com/WiseLibs/better-sqlite3/blob/v5.0.1/docs/api.md#aggregatename-options---this)
 * all user input functions begin with "action" and
 
-interface:
+### Misplaced interface thoughts:
 * relation-select reactivity: instead of some array-copying madness, just have the selector set to the current items as an event, fired with every data update
 * editing relations:
     * I think I'm going to narrow from the previous iteration of the relation creator/editor so you can only configure one relation at a time, meaning you can't edit the constraints on the other relations
