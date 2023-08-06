@@ -1,3 +1,13 @@
+# goby-database notes
+
+Present to-do:
+
+- [ ] set up comparison of old targets to the new targets in `configure_relation_targets` so I don't have to rely on the changes being passed in from the front-end
+- [ ] for `case 'unlink'` in `clean_up_junctions`, have any non-existent one-sided junction tables created on the spot
+- [ ] write a new class retrieval function that groups relations so each relation property is an array of objects with the format: `{class_id:X,prop_id:X,object_id:X}`
+- [ ] use new class retrieval function to perform validation and make sure all relations in a junction at least abide by the `max` set for that function
+
+
 Things this program should be able to do:
 
 * initialization
@@ -68,88 +78,54 @@ Core concepts:
 
 
 Junction tables
-* on each class, what needs to be stored on the property is:
-    * the junction ID
-* the junction metadata stores:
-    * participant class properties
-        * for each property, single or multiple
-        * for each property, the class.properties they can choose from (targets)
-* solving the targeting problem (see [ref](https://www.are.na/block/17459572))
-    * when you make a relation, you can pick multiple targets. the question is: do those targets have each other as possible relations? in other words, can that junction table host relationships not involving the class on which the junction was initiated
-    * the resolution:
-        * each participant has a list of the class.properties they're allowed to pick from
-* I need to think about the interface for constructing a linked relationship
-    * what I could possibly do is have it list possible properties that could be linked. 
-    * the key is a property can only be in one linked junction table
-    * this possibly calls for some diagramming in the interface
-* I'm realizing a raw list of "participants" is not gonna work here.
-    * What I need at the least is a list of "links" specifying which properties are linked to which.
-    * The rule is: a property can only be linked to one property from a class.
-        * however, that one property can be itself.
+
+* the targeting problem in the old system(see [ref](https://www.are.na/block/17459572)):
+    * when you make a relation, you can pick multiple targets. the question is: can those targets have each other as possible relations? in other words, can that junction table host relationships not involving the class on which the junction was initiated?
+* the resolution:
+    * an overhaul of the way relations are stored and structured, so that it all around makes more sense and isn't arbitrarily tied to the shape of a big junction table (see next bullet)
+* the new system:
+    * when you make a relation property, you pick targets like before
+    * you can just pick a class as a target, in which case it's one-way, _or_ you can additionally specify a property in a targeted class to link it with
+        * The big change here is that properties can specify which targets they link with, rather than having to be "linked" across the board (which didn't make much sense anyway). And they can target any set of classes/link with any property as long as they follow a common sense rule:
+    * the basic rule governing possible relationships is that a property can only be linked to one property from a class
+        * however, that one property can be itself
         * Q: can two properties within the same class be linked to each other?
             * A: Yes. Imagine "parent of" and "child of" properties.
-        * Q: what happens if a class A is in a junction table as the butt-end of another property 1, and then you want to create a property 2 in A which links with property 1?
-            * presumably the relations would transfer
-        * AH! addendum to rule: the class itself is included as one of the things something can be linked to. 
-            * so the columns in the junction table will either be properties or the classes themselves
-* so ultimately from my revelation just now junction tables will need:
-    * a list of participants, which just accounts for every class and class.property which has a column in the table
-        * for properties, this data is specified:
-            * the count
-            * the targets, which may or may not be linked
-            * any other special things about it, such as an expression determining possible or actual relations
-    * a list of "links", specifying when what is selected by one property should be mirrored by another
-* I should make a decision tree for the modification of a relation prop and its affects on new or existing junction tables, classes, and properties
-* I started decision tree below — starting to really think that all the property data should be stored in the junction metadata, otherwise things will get messy fast
-* another complication: if a property targets itself, it needs to appear twice in the junction table
-    * maybe the second column can have a suffix like `_self`
-* another revelation that just came to me: there's no need to put everything in one junction table. what I can do is have each and every relation between two properties or between a property and a class be its own junction table. This may make things considerably simpler than I was anticipating
-    * the metadata related to a property, in this case, could stay on that property.
-        * it would list each target, and for each, it would point to a corresponding junction table. 
-    * it could be specified in the junction table's metadata whether the junction was linked. this would amount, basically, to whether it was between two properties or between a property and a class
-    * adding a new target=creating a new junction table
-    * I would have to account for what happens if a target is removed on a property and on either side of linked properties
-    * linking a previously unlinked target to a property would be a matter of renaming one of the columns in the table and adjusting the metadata
-    * self-to-self links wouldn't present any big nightmares
+        * Q: what happens if you start with a class_1.property_A targeting class_2 without any link, and decide to link it with class_2.property B ?
+            * I would transfer any unlinked relations from class_1.property_A to this new link, along with any unlinked relations from class_2.property_B which target class_1
+            * only caveat is I would validate the relations to make sure they don't violate any constraints on either property, e.g. class_1.property_A having a limit of 1 relation per object
+    * the technical implementation: individual junction tables
+        * rather than have a single junction table for all of the targets of a property, I'm going to have one junction table for each target. It will have just two columns, one for each class/class.property.
+            * following the rule above, the only condition is there can only be one junction table for a class.property and another class
+            * junctionlist structure:
+                | id | class A id | prop A id | class B id | prop B id | metadata |
+            * each junction structure:
+                | classA_id_propA_id | classB_id(_propB_id) |
 * maybe "count" could be generalized to a "max" condition?
     * although maybe in the interface still making it a toggle between the single and multi-select that people are familiar with
+    * this doesn't work because the conditions are supposed to determine candidates for a relation, and if this is a condition then a single select will have no candidates
 
 
 ### Junction table decision flow
 
-Tree: creating or modifying a relation prop
-* creating:
-    * new or existing junction table?
-        * if new:
-            * what participants
-                * do classes/props exist or do they need to be created?
-            * what links
-        * if existing:
-* modifying:
-    * targets to be added?
-        * do they exist?
-        * are they linked?
-        * are they in the participant list?
-            * if not, column needs to be added to the junction table
-    * link to be made?
-        * is the class of the linked prop already a target of this prop? or is this class a target of the linked class?
-            * if so, columns need to be renamed 
-
-Okay maybe to simplify, and if all the information about a relation property is stored in the junction tree's metadata:
-
-* A change in targets requires:
-    * checking to see if those targets exist, and creating them (creating a class, creating a property, or both)
-    * checking to see which targets are in the participant list
-        * if not there, add them by adding them to the participant list and as columns in the junction table
-    * If targets are going away, check if they are targets of any other participant prop, and if not remove that participant from the participant list and the column list
-* A change in links requires:
-    * checking to see if either property in the link is currently in the junction && already targeting the opposite class
-        * if so, the relations have to be transferred from property A->class B to property A<->property B to  and validated
-* in all cases:
-    * a validation of all properties involved to make sure link and count rules are being followed
+* Q: does the exact match of classA.property to classB[.property] (or inverse) exist?
+    * A: no
+        * create it
+        * Q: is there a B.property?
+            * A: no
+                * do nothing
+            * A: yes
+                * add the property to a queue to be validated
+    * A: yes
+        * do nothing
+* check for changes in targets (presence or linking), or receive them already-listed, and then make any transfers or deletions of junction tables necessary.
+* Validation: 
+    * iterate over each object in the class and make sure its relations for this property follow its constraints (which also cleans things up if the constraints changed or if a transfer has happened through another property)
 
 
 
+Return format for relation properties:
+* for each row, an array of the objects its connected to, in the format: `{class_id:X,prop_id:X,object_id:X}`
 
 
 Names versus IDs:
@@ -170,18 +146,31 @@ development:
 
 interface:
 * relation-select reactivity: instead of some array-copying madness, just have the selector set to the current items as an event, fired with every data update
+* editing relations:
+    * I think I'm going to narrow from the previous iteration of the relation creator/editor so you can only configure one relation at a time, meaning you can't edit the constraints on the other relations
 
 
 
 ### Test suite checklist
 
+Basic:
 - [ ] create a class
+- [ ] delete a class
+    - deal with relation fall-out
 - [ ] add a row to a class
+- [ ] delete a row from a class
+    - deal with relation fall-out
 - [ ] add a data property to a class
+- [ ] delete a data property from a class
 
-Relation properties:
-- [ ] add a linked relation property to a class, linking it to new property in an existing class
-- [ ] add a linked relation propery to a class, linking it to new property in a new class
-- [ ] add a linked relation property to class A, linking it to an existing relation property in class B which has class A as a target
+Relation properties — test the following actions/options in relevant combinations with each other:
+- [ ] adding a new relation prop
+- [ ] setting the `conditions.max` (formerly `count`) and validating relations correspondingly
+- [ ] deleting a relation prop
+- [ ] linking a relation prop to another prop, new or existing
+- [ ] having a property target its own parent class
+- [ ] removing a link between two props
+- [ ] adding a new relation
 
-
+Returning data:
+- [ ] return relation props in the format specified in _Return format for relation properties_
