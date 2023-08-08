@@ -2,10 +2,13 @@
 
 ### Present to-do:
 
-- [x] set up comparison of old targets to the new targets in `configure_relation_targets` so I don't have to rely on the changes being passed in from the front-end
-- [x] for `case 'unlink'` in `clean_up_junctions`, have any non-existent one-sided junction tables created on the spot
-- [x] write a new class retrieval function that groups relations so each relation property is an array of objects with the format: `{class_id:X,prop_id:X,object_id:X}`
+- [ ] make `config_relation_targets` able to work with existing props, not just new ones; have to figure out the adjusting of target targets
+- [ ] STARTED BUT UNFINISHED: detect changes to target classes/properties within the `sync_relations` table, such as linking the target for a new link property, and call `configure_relation` to execute those changes
+    - these changes arise out of links: links being created, previous links being deleted, whole properties or classes with links being deleted, links targeting a different property within the same class, and anything else that isn't occurring to me (hopefully nothing?)
+    - you have to make sure no tables are being created where it doesn't make sense for them to be created
+- [ ] test the modification of existing relation props and their links in `sandbox.js` to work out the kinks
 - [ ] use new class retrieval function to perform validation and make sure all relations in a junction at least abide by the `max` set for that function
+- [ ] create `delete relation property` function
 
 
 ### Things this program should be able to do:
@@ -207,3 +210,9 @@ FROM people p LEFT JOIN cte c
 ON c.person = p.id;
 
 ```
+
+
+### Finished to-do archive:
+- [x] set up comparison of old targets to the new targets in `configure_relation_targets` so I don't have to rely on the changes being passed in from the front-end
+- [x] for `case 'unlink'` in `clean_up_junctions`, have any non-existent one-sided junction tables created on the spot
+- [x] write a new class retrieval function that groups relations so each relation property is an array of objects with the format: `{class_id:X,prop_id:X,object_id:X}`
