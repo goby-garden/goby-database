@@ -22,6 +22,7 @@ class Project{
             begin:this.db.prepare('BEGIN IMMEDIATE'),
             commit:this.db.prepare('COMMIT'),
             rollback:this.db.prepare('ROLLBACK'),
+            get_junctionlist:this.db.prepare('SELECT id, side_a, side_b, metadata FROM system_junctionlist'),
             get_class:this.db.prepare(`SELECT name, metadata FROM system_classlist WHERE id = ?`),
             get_class_id:this.db.prepare(`SELECT id FROM system_classlist WHERE name = ?`),
             save_class_meta:this.db.prepare(`UPDATE system_classlist set metadata = ? WHERE id = ?`),
@@ -183,6 +184,24 @@ class Project{
 
         return id;
  
+    }
+
+
+
+
+    action_update_relations(junction_list,new_properties=[]){
+        // step 1: create any new properties and retrieve their ids, add them to junction_list where they appear
+
+
+        let old_junction_list=this.run.get_junctionlist.all();
+
+        // step 2: sort junctions in delete and new piles, disregard whatever stayed the same
+
+        // step 2: for each of the new junctions:
+            // check if it has an id or if it's just a name (new prop)
+
+
+
     }
 
 
