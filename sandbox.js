@@ -12,26 +12,62 @@ project.action_add_data_property(base_id,'notes',{max:1},'string')
 let base_item1=project.action_add_row(base_id);
 let base_item2=project.action_add_row(base_id);
 
-let base_relation_id=project.action_add_relation_property(
-    // class id
-    base_id,
-    // name of prop
-    'test',
-    // targets
-    [
-        {
-            class_name:'A',
-            prop_name:'prop1'
-        },
-        {
-            class_name:'B',
-            prop_name:'prop1'
-        },
-        {
-            class_name:'C'
-        }
-    ]
-)
+
+project.action_update_relations([
+    {
+        sides:[
+            {
+                class_id:base_id,
+                prop_name:'test'
+            },
+            {
+                class_name:'A',
+                prop_name:'prop1'
+            }
+        ]
+    },
+    {
+        sides:[
+            {
+                class_id:base_id,
+                prop_name:'test'
+            },
+            {
+                class_name:'B',
+                prop_name:'prop1'
+            }
+        ]
+    },
+    {
+        sides:[
+            {
+                class_id:base_id,
+                prop_name:'test'
+            },
+            {
+                class_name:'C'
+            }
+        ]
+    }
+],[
+    {
+        class_id:base_id,
+        prop_name:'test'
+    },
+    {
+        class_name:'A',
+        prop_name:'prop1'
+    },
+    {
+        class_name:'B',
+        prop_name:'prop1'
+    },
+    {
+        class_name:'C'
+    }
+])
+
+
 
 // adding rows
 let a_item1=project.action_add_row(undefined,'A');
@@ -50,16 +86,26 @@ project.action_make_relation({ class_id:base_id,prop_id:3,object_id:base_item2},
 project.action_make_relation({class_id:base_id,prop_id:3,object_id:base_item1},{class_id:c_id,object_id:c_item1})
 project.action_make_relation({class_id:base_id,prop_id:3,object_id:base_item2},{class_id:b_id,prop_id:2,object_id:b_item1})
 
+let junction_list=project.get_junctions();
+// console.log(junction_list)
 
-console.log(base_relation_id)
-// action_configure_relation(base_id,base_relation_id,[
-//     {
-
-//     }
-// ])
+project.action_update_relations([
+    junction_list[0],
+    {
+        sides:[
+            {
+                class_id:3,
+                prop_id:2
+            },
+            {
+                class_id:1
+            }
+        ]
+    }
+])
 
 
 let classes=project.retrieve_all_classes();
-// console.log(classes[0].metadata)
+// console.log(classes[0].objects)
 
-// project.action_save();
+

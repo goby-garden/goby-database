@@ -22,9 +22,10 @@ class Project{
             begin:this.db.prepare('BEGIN IMMEDIATE'),
             commit:this.db.prepare('COMMIT'),
             rollback:this.db.prepare('ROLLBACK'),
-            get_junctionlist:this.db.prepare('SELECT id, side_a, side_b, metadata FROM system_junctionlist'),
+            get_junctionlist:this.db.prepare('SELECT id, junction_obj(side_a, side_b) AS sides, metadata FROM system_junctionlist'),
             get_class:this.db.prepare(`SELECT name, metadata FROM system_classlist WHERE id = ?`),
             get_class_id:this.db.prepare(`SELECT id FROM system_classlist WHERE name = ?`),
+            get_all_classes:this.db.prepare(`SELECT id, name, metadata FROM system_classlist`),
             save_class_meta:this.db.prepare(`UPDATE system_classlist set metadata = ? WHERE id = ?`),
             match_junction:this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a = @input_1 AND side_b = @input_2 ) OR ( side_a = @input_2 AND side_b = @input_1 )`),
             fuzzy_match_junction:this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a LIKE @input_1 AND side_b LIKE @input_2 ) OR ( side_a LIKE @input_2 AND side_b LIKE @input_1 )`)
@@ -58,7 +59,16 @@ class Project{
             'metadata TEXT'
         ]);
 
-
+        this.db.function('junction_obj', (side_a, side_b) => {
+            
+            let split_1=side_a.split('.');
+            let split_2=side_b.split('.');
+            let c1=`"class_id":${split_1[0]}`;
+            let p1=split_1[1]?`,"prop_id":${split_1[1]}`:'';
+            let c2=`"class_id":${split_2[0]}`;
+            let p2=split_2[1]?`,"prop_id":${split_2[1]}`:'';
+            return `[ {${c1}${p1}}, {${c2}${p2}} ]`;
+        });
    
         
     }
@@ -157,7 +167,7 @@ class Project{
 
     }
 
-    action_add_relation_property(class_id,name,targets,conditions,style){
+    action_add_relation_property(class_id,name,conditions,style){
         // basic property construction------------------
         let class_meta=JSON.parse(this.run.get_class.get(class_id).metadata);
    
@@ -169,191 +179,248 @@ class Project{
             name,
             style,
             id,
-            targets,
+            targets:[],
             conditions
         }
         //add property to property list 
         class_meta.properties.push(prop_meta);
 
-        
-        
-        
+
         this.run.save_class_meta.run(JSON.stringify(class_meta),class_id);
 
-        this.action_configure_relation(class_id,id,targets,conditions);
 
         return id;
  
     }
 
 
+    delete_property(class_id,prop_id){
+        //this function is meant to be used within a flow where the relations that need to change as a result of this deletion are already kept track of
 
-
-    action_update_relations(junction_list,new_properties=[]){
-        // step 1: create any new properties and retrieve their ids, add them to junction_list where they appear
-
-
-        let old_junction_list=this.run.get_junctionlist.all();
-
-        // step 2: sort junctions in delete and new piles, disregard whatever stayed the same
-
-        // step 2: for each of the new junctions:
-            // check if it has an id or if it's just a name (new prop)
-
-
+        let class_meta=JSON.parse(this.run.get_class.get(class_id).metadata);
+        let i=class_meta.properties.findIndex(a=>a.id==prop_id);
+        class_meta.properties.splice(i,1);
+        this.run.save_class_meta.run(JSON.stringify(class_meta),class_id.id);
 
     }
 
+    get_junctions(){
+        let junction_list=this.run.get_junctionlist.all();
+        junction_list.map(a=>a.sides=JSON.parse(a.sides))
+        return junction_list;
+    }
 
-    action_configure_relation(class_id,prop_id,targets,conditions){
-        /*targets=[
-            {
-                class_id:'',
-                    // if prop_id is undefined, i.e. new class:
-                    class_name:'',
-                prop_id:'',
-                    // if prop_id is undefined, i.e. new prop in target
-                    prop_name:'',
-                junction_id:'' // if the junction already exists,
-            }
-        ]*/
-        
-        let class_meta=JSON.parse(this.run.get_class.get(class_id).metadata);
-        let prop_meta=class_meta.properties.find(a=>a.id==prop_id);
-        let old_targets=prop_meta.targets;
-        
 
-        targets=targets!==undefined?targets:old_targets;
-        conditions=conditions!==undefined?conditions:class_meta.conditions;
+    action_update_relations(junction_list,target_changes=[]){
 
-        let property_creation_queue=[];
-        let property_config_queue=[];
+        // STEP 1 ============================
+        // create any new classes and/or properties and retrieve their ids, add them to junction_list where they appear
 
-        for(let target of targets){
-            //create class if it doesn't exist, and get id
-            if(target.class_id==undefined) target.class_id=this.action_create_class(target.class_name);
-            let target_class_meta=JSON.parse(this.run.get_class.get(target.class_id).metadata);
+        for(let target of target_changes){
+
             
-            // checks if the property doesn't exist and if there's supposed to be a property (i.e., if there's a property_name in the object to be defined)
-            if(!target.prop_id&&target.prop_name?.length>0){
-                target_class_meta
-
-                //figure out what the next prop id will be
-                target.prop_id=Math.max(...target_class_meta.used_prop_ids)+1;
-
-                //add the prop to a list of props that need to be created after the current one is done
-                
-                property_creation_queue.push({
-                    class_id:target.class_id,
-                    name:target.prop_name,
-                    targets:[
-                        {
-                            class_id:class_id,
-                            prop_id:prop_id
-                        }
-                    ]
+            if(target.change=='create'){
+                if(target.class_id==undefined) target.class_id=this.action_create_class(target.class_name);
+                junction_list.map(junction=>{
+                    let matching=junction.sides.find(
+                        side=>side.class_name==target.class_name);
+                    if(matching) matching.class_id=target.class_id;
                 })
-            }else if(target.prop_id!==undefined){
-                // NOTE: whether or not prop is new, it needs to be in a queue to be processed, to update its targets and check its conditions
-                // the presence of the "targets" in a target determines whether it has already been configured elsewhere
-               
-                // if(target.targets) property_config_queue.push({
-                //     class_id:target.class_id,
-                //     prop_id:target.prop_id,
-                //     targets:target.targets
-                // })
 
-                // change in plans: instead of setting this here, I'm going to update targets based on link/unlink changes below
-            }
-
-            if(target.class_name) delete target.class_name;
-            if(target.prop_name) delete target.prop_name;
-
-
-            // junction creation==========================
-
-            let sides={
-                input_1: `${class_id}.${prop_id}`,
-                input_2:`${target.class_id}.${target.prop_id || ''}`
-            }
-            target.junction_id=this.run.match_junction.get(sides)?.id;
-            
-            if(target.junction_id==undefined) target.junction_id=this.create_junction_table(sides);
-            
-        }
-
-        // compare old targets and current targets
-            // loop through old targets and see if any have been deleted, see if any that aren't new became newly linked or unlinked, or linked to a different prop
-
-        let junction_changes=[];
-        
-        for(let old_target of old_targets){
-            if(old_target.class_id){
-                let class_match=targets.find(a=>a.class_id==old_target.class_id);
-
-                if(!class_match){
-                    junction_changes.push({
-                        type:'delete',
-                        source:{class_id,prop_id},
-                        target:{class_id:old_target.class_id,prop_id:old_target.prop_id}
-                    })
-                }else if(class_match.prop_id&&!old_target.prop_id){
-                    //link previously unlinked
-                    junction_changes.push({
-                        type:'link',
-                        source:{class_id,prop_id},
-                        target:{class_id:old_target.class_id,prop_id:class_match.prop_id}
-                    })
-                }else if(!class_match.prop_id&&old_target.prop_id){
-                    //delink previously linked
-                    junction_changes.push({
-                        type:'unlink',
-                        source:{class_id,prop_id},
-                        target:{class_id:old_target.class_id,prop_id:old_target.prop_id}
-                    })
-                }else if(class_match.prop_id!==old_target.prop_id){
-                    //transfer link
-                    junction_changes.push({
-                        type:'transfer link',
-                        source:{class_id,prop_id},
-                        target:{class_id:class_match.class_id,prop_id:class_match.prop_id},
-                        old_target:{class_id:old_target.class_id,prop_id:old_target.prop_id}
-                
+                if(target.prop_name!==undefined){
+                    target.prop_id=this.action_add_relation_property(target.class_id,target.prop_name);
+                    junction_list.map(junction=>{
+                        let matching=junction.sides.find(
+                            side=>side.class_id==target.class_id&&side.prop_name==target.prop_name);
+                        if(matching) matching.prop_id=target.prop_id;
                     })
                 }
+            }else if(target.change=='delete'){
+                delete_property(target.class_id,target.prop_id);
             }
+
             
 
-
-        }
-      
-
-        prop_meta.targets=targets;
-        this.run.save_class_meta.run(JSON.stringify(class_meta),class_id);
-
-        // syncing links + garbage collection =========================
-        if(junction_changes) this.sync_relations(junction_changes)
-
-
-        // validation (check conditions) ================
-        this.check_conditions(class_id,prop_id,targets,conditions);
-
-
-        for(let prop of property_creation_queue){
-            this.action_add_relation_property(prop.class_id,prop.name,prop.targets);
         }
 
-        for(let prop of property_config_queue){
-            //fetch class meta to get targets and conditions
-            //run action_configure_relation
+        let classes_meta=this.run.get_all_classes.all();
+        classes_meta.map(a=>a.metadata=JSON.parse(a.metadata))
 
 
-         
+        // STEP 2 ============================
+        // find all the old junctions which don't appear in the new list
+        // add them to a "delete_queue" to schedule them for deletion
+        // remove the corresponding targets from the properties they reference
+
+        let delete_queue=[];
+        let old_junction_list=this.get_junctions();
+        
+
+
+        for(let junction of old_junction_list){
+            
+            let s1=junction.sides[0]
+            let s2=junction.sides[1];
+       
+            let matching=junction_list.find(a=>junction_match(a.sides,junction.sides));
+
+            
+            if(matching==undefined){
+                if(s1.prop_id) remove_target(s1,s2);
+                if(s2.prop_id) remove_target(s2,s1);
+                delete_queue.push(junction);
+            }
+            
+            
+
+            //delete queue junctions will need to have the targets removed (or left be, if the prop target doesn't match) from their respective props
+        
+            
+            
         }
+
+        
+        // STEP 3 ============================
+        // a) find all the junctions in the new list that don't appear in the old one
+        // b) this means they need to be newly created
+        // c) the corresponding targets need to be registered in any referenced properties
+        // d) we check if there are any former tables which share at least one of the same properties, and we transfer their properties
+
+        
+        for(let junction of junction_list){
+            let s1=junction.sides[0];
+            let s2=junction.sides[1];
+            
+
+            // a)
+            let matching=old_junction_list.find(a=>junction_match(a.sides,junction.sides));
+           
+            if(matching==undefined){
+
+                // b)
+                // create the new table
+                let j_sides={
+                    input_1: `${s1.class_id}.${s1.prop_id || ''}`,
+                    input_2:`${s2.class_id}.${s2.prop_id || ''}`
+                }
+                
+                let junction_id=this.create_junction_table(j_sides);
+
+                // c)
+                
+                if(s1.prop_id) add_target(s1,s2,junction_id);
+                if(s2.prop_id) add_target(s2,s1,junction_id);
+
+                let j_object={
+                    side_a:j_sides.input_1,
+                    side_b:j_sides.input_2,
+                    id:junction_id
+                };
+
+                // d)
+                // look for any tables in the delete pile that pair the same classes and have the same property on one side. If any exist, transfer the connections from the old tables
+                let partial_matches=delete_queue.filter(a=>partial_junction_match(a.sides,junction.sides));
+                
+                
+                for(let partial of partial_matches){
+                    let p_object={
+                        id:partial.id,
+                        side_a:`${partial.sides[0].class_id}.${partial.sides[0].prop_id || ''}`,
+                        side_b:`${partial.sides[1].class_id}.${partial.sides[1].prop_id || ''}`
+                    }
+                    this.transfer_connections(p_object,j_object);
+                }
+
+            }
+        }
+
+        // STEP 4 ============================ 
+        // delete the tables in the delete pile
+        for(let junction of delete_queue){
+            this.delete_junction_table(junction.id);
+        }
+        
+
+        // STEP 5 ============================ 
+        // submit all prop updates to class_meta
+        let modified_classes=classes_meta.filter(a=>a.modified);
+       
+        for(let modified of modified_classes) this.run.save_class_meta.run(JSON.stringify(modified.metadata),modified.id);
+
+
+
+        // STEP 6 (TBD) ===================
+        // check if the connections in the new tables follow the conditons of their corresponding properties, and remove any that don't pass muster
+
+
+
+        
+        // ======================== utility functions ============================
+        function side_match(x,y){
+            return x.class_id==y.class_id&&x.prop_id==y.prop_id;
+        };
+        
+        
+        function junction_match(a,b){
+            // match sides completely, order doesn't matter
+            return (side_match(a[0],b[0])&&side_match(a[1],b[1])) ||
+                   (side_match(a[0],b[1])&&side_match(a[1],b[0]));
+
+        }
+
+        function partial_junction_match(a,b){
+            
+           // match both classes
+            // match at least one prop
+            let a0_match_i=b.findIndex(side=>a[0].class_id==side.class_id);
+            let a1_match_i=b.findIndex(side=>a[1].class_id==side.class_id);
+            if(a0_match_i>=0&&a1_match_i>=0&&a0_match_i!==a1_match_i){
+                return b[a0_match_i].prop_id==a[0].prop_id||
+                       b[a1_match_i].prop_id==a[1].prop_id
+            }else{
+                return false;
+            }
+            
+        }
+        
+
+        function remove_target(prop,target){
+            let prop_class=classes_meta.find(a=>a.id==prop.class_id)
+            
+            let class_meta=prop_class.metadata;
+            
+            let prop_meta=class_meta.properties.find(a=>a.id==prop.prop_id);
+            
+            if(prop_meta){
+                let target_index=prop_meta.targets.findIndex(a=>side_match(a,target));
+                if(target_index>=0) prop_meta.targets.splice(target_index,1);
+                prop_class.modified=true;
+            }
+        }
+
+        function add_target(prop,target,junction_id){
+            let prop_class=classes_meta.find(a=>a.id==prop.class_id)
+            let class_meta=prop_class.metadata
+            
+            let prop_meta=class_meta.properties.find(a=>a.id==prop.prop_id);
+            
+            if(prop_meta){
+                let obj={
+                    class_id:target.class_id,
+                    junction_id:junction_id
+                }
+                if(target.prop_id!==undefined) obj.prop_id=target.prop_id;
+                prop_meta.targets.push(obj)
+             
+                prop_class.modified=true;
+                
+            }
+        }
+        
 
     }
 
-
+    
     create_junction_table(sides){
         // adds new record to junction table
         this.db.prepare(`INSERT INTO system_junctionlist (side_a, side_b) VALUES ('${sides.input_1}','${sides.input_2}')`).run();
@@ -371,157 +438,8 @@ class Project{
     }
 
 
-    sync_relations(changes){
-        // this function does not create junction tables. it only transfers connections from old junction tables and deletes them.
-        /* changes=[
-            {
-                type:'link',
-                participants:[
-                    {
-                        class_id:1,
-                        prop_id:1
-                    }
-                ]
-            }
-        ]*/
-      
-        for(let change of changes){
-            let source=change.source;
-            let target=change.target;
-
-            let target_class=this.run.get_class.get(target.class_id);
-            
-            let side_1,side_2,linked;
-
-            let s1_input={
-                input_1: `${source.class_id}.${source.prop_id}`,
-                input_2:`${target.class_id}.`
-            };
-            let s2_input={
-                input_1: `${target.class_id}.${target.prop_id}`,
-                input_2:`${source.class_id}.`
-            };
-
-            if(change.type=='link'||change.type=='unlink'||change.type=='transfer link'){
-                side_1=this.run.match_junction.get(s1_input);
-                side_2=this.run.match_junction.get(s2_input);
-                linked=this.run.match_junction.get({
-                    input_1: `${source.class_id}.${source.prop_id}`,
-                    input_2:`${target.class_id}.${target.prop_id}`
-                });
-            }
-
-
-            switch(change.type){
-                case 'link':
-                    console.log('--> new link')
-                    //two properties become linked. either of them may have existing connections to each other's classes, and if so those connections have to be transferred to the link.
-                    if(linked){
-                        if(side_1){
-                            transfer_junction_relations(side_1,linked);
-                            delete_junction_table(side_1.id);
-                        }
-                        
-                        if(side_2){
-                            transfer_junction_relations(side_1,linked);
-                            delete_junction_table(side_2.id);
-                        }
-                    }
-                    // call config_relation to sync other side with updated target (either added the class as a target, or just add the property)
-                    {
-                        let target_class_meta=JSON.parse(target_class.metadata);
-                        let side_2_prop=target_class_meta.properties.find(a=>a.id==target.prop_id);
-                        let side_2_source_target=side_2_prop.targets.find(a=>a.class_id==source.class_id);
-                        let new_targets;
-
-                        if(!side_2_source_target){
-                            side_2_prop.targets.push({
-                                class_id:source.class_id,
-                                prop_id:source.prop_id
-                            })
-                            new_targets=side_2_prop.targets;
-
-                        }else if(side_2_source_target.prop_id!==source.prop_id){
-                            side_2_source_target.prop_id=source.prop_id;
-                            new_targets=side_2_prop.targets;
-                        }
-
-                        if(new_targets) this.action_configure_relation(target.class_id,target.prop_id,new_targets);
-                    }
-
-                break;
-                case 'unlink':
-                    //two previously linked properties become de-linked, while possibly staying connected to each other's classes, so the linked connection should be transferred if those tables exist
-                    console.log('--> unlinking')
-                    
-                    if(!side_1){
-                        target.junction_id=this.create_junction_table(s1_input);
-                        side_1=this.run.match_junction.get(s1_input);
-                    }
-                    if(!side_2){
-                        target.junction_id=this.create_junction_table(s2_input);
-                        side_2=this.run.match_junction.get(s2_input);
-                    }
-                    
-                    if(linked){
-                        transfer_junction_relations(linked,side_1);
-                        transfer_junction_relations(linked,side_2);
-
-                        delete_junction_table(linked.id);
-                    }
-
-                    
-                    {   
-                        // call config_relation to sync other side with updated target (removing the property)
-                        if(target_class){
-                            let target_class_meta=JSON.parse(target_class.metadata);
-                            let side_2_prop=target_class_meta.properties.find(a=>a.id==target.prop_id);
-                            let side_2_source_target=side_2_prop.targets.find(a=>a.class_id==source.class_id);
-                          
-                            if(side_2_source_target.prop_id) {
-                                delete side_2_source_target.prop_id;
-                                this.action_configure_relation(target.class_id,target.prop_id,side_2_prop.targets);
-                                
-                            }
-                        }
-                    }
-
-
-                break;
-                case 'transfer link':
-                    console.log('--> transfering link')
-
-                    // let p3=old_participants[1];
-                    let old_linked=this.run.match_junction.get({
-                        input_1: `${source.class_id}.${source.prop_id}`,
-                        input_2:`${old_target.class_id}.${old_target.prop_id}`
-                    });
-                    transfer_junction_relations(old_linked,linked);
-
-
-
-                break;
-                case 'delete':
-                    console.log('--> deleting target')
-
-                    //a former connection of any kind has been deleted (neither side targets one another), so a table has to be removed
-                    let delete_id=this.run.match_junction.get({
-                        input_1: `${source.class_id}.${source.prop_id||''}`,
-                        input_2:`${target.class_id}.${target.prop_id||''}`
-                    })?.id;
-                    if(delete_id) delete_junction_table(delete_id);
-
-                    //check if there was a property on second input, if so call configure_relation on it with [targets] updated to make other side of link one-sided
-                break;
-                
-                
-            }
-        }
-
-
-    }
-
-    transfer_junction_relations(source,target){
+    transfer_connections(source,target){
+        
         let source_relations=this.db.prepare(`SELECT * FROM junction_${source.id}`).all();
         
         //have to match source sides to target sides in order to determine junction order
@@ -680,7 +598,7 @@ class Project{
     }
 
     retrieve_all_classes(){
-        const classes_data=this.db.prepare(`SELECT id, name, metadata FROM system_classlist`).all();
+        const classes_data=this.run.get_all_classes.all();
         // console.log(classes)
         let classes=[];
         for(let cls of classes_data){
