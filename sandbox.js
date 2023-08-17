@@ -51,18 +51,22 @@ project.action_update_relations([
     }
 ],[
     {
+        change:'create',
         class_id:base_id,
         prop_name:'test'
     },
     {
+        change:'create',
         class_name:'A',
         prop_name:'prop1'
     },
     {
+        change:'create',
         class_name:'B',
         prop_name:'prop1'
     },
     {
+        change:'create',
         class_name:'C'
     }
 ])
@@ -106,6 +110,6 @@ project.action_update_relations([
 
 
 let classes=project.retrieve_all_classes();
-// console.log(classes[0].objects)
+console.log(classes[2])
 
 

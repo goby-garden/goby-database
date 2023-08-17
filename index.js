@@ -6,6 +6,7 @@ class Project{
     
         this.text_datatypes=['string','resource'];
         this.real_datatypes=['number'];
+        
     
         
         //checks if goby has been initialized, initializes if not
@@ -31,12 +32,22 @@ class Project{
             fuzzy_match_junction:this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a LIKE @input_1 AND side_b LIKE @input_2 ) OR ( side_a LIKE @input_2 AND side_b LIKE @input_1 )`)
         }
 
+        
 
+
+        this.class_cache={};
+        this.refresh_class_cache();
+        this.junction_cache=[];
+        this.refresh_junction_cache();
+        // this.junction_cache;
         
         //if I understand transactions correctly, a new one will begin with every user action while committing the one before, meaning I'll need to have the first begin here
         //this enables a one-step undo.
         // this.run.begin.run();
+        
     }
+
+    
 
     init(){
 
@@ -71,6 +82,27 @@ class Project{
         });
    
         
+    }
+
+
+    refresh_class_cache(){
+        let class_array=this.run.get_all_classes.all();
+        let cache_obj={};
+        for(let cls of class_array){
+            cache_obj[cls.id]={
+                id:cls.id,
+                name:cls.name,
+                metadata:JSON.parse(cls.metadata)
+            };
+
+        }
+        this.class_cache=cache_obj;
+    }
+
+    refresh_junction_cache(){
+        let junction_list=this.run.get_junctionlist.all();
+        junction_list.map(a=>a.sides=JSON.parse(a.sides));
+        this.junction_cache=junction_list;
     }
 
       
@@ -130,15 +162,20 @@ class Project{
         this.db.prepare(`INSERT INTO system_classlist (name, metadata) VALUES ('${name}','${JSON.stringify(table_meta)}')`).run();
         //get the id of newest value from system_classlist and return
         const class_id=this.db.prepare('SELECT id FROM system_classlist ORDER BY id DESC').get().id;
+
+        this.refresh_class_cache();
+        this.refresh_junction_cache();
+
         return class_id;
+        
 
     }
 
 
     action_add_data_property(class_id,name,conditions,datatype,style){
-        let class_data=this.run.get_class.get(class_id);
+     
+        let class_data=this.class_cache[class_id];
         let class_name=class_data.name;
-        class_data.metadata=JSON.parse(class_data.metadata)
         let class_meta=class_data.metadata;
         
         let id=Math.max(...class_meta.used_prop_ids)+1;
@@ -163,13 +200,14 @@ class Project{
 
         //update metadata json for table with new property
         this.run.save_class_meta.run(JSON.stringify(class_meta),class_id);
+        this.refresh_class_cache();
         
 
     }
 
     action_add_relation_property(class_id,name,conditions,style){
         // basic property construction------------------
-        let class_meta=JSON.parse(this.run.get_class.get(class_id).metadata);
+        let class_meta=this.class_cache[class_id].metadata;
    
         let id=Math.max(...class_meta.used_prop_ids)+1;
         class_meta.used_prop_ids.push(id);
@@ -187,7 +225,7 @@ class Project{
 
 
         this.run.save_class_meta.run(JSON.stringify(class_meta),class_id);
-
+        this.refresh_class_cache();
 
         return id;
  
@@ -197,11 +235,11 @@ class Project{
     delete_property(class_id,prop_id){
         //this function is meant to be used within a flow where the relations that need to change as a result of this deletion are already kept track of
 
-        let class_meta=JSON.parse(this.run.get_class.get(class_id).metadata);
+        let class_meta=this.class_cache[class_id].metadata;
         let i=class_meta.properties.findIndex(a=>a.id==prop_id);
         class_meta.properties.splice(i,1);
         this.run.save_class_meta.run(JSON.stringify(class_meta),class_id.id);
-
+        this.refresh_class_cache();
     }
 
     get_junctions(){
@@ -209,6 +247,11 @@ class Project{
         junction_list.map(a=>a.sides=JSON.parse(a.sides))
         return junction_list;
     }
+
+
+    // action_edit_structure(property_changes=[],junction_list){
+    //     // 
+    // }
 
 
     action_update_relations(junction_list,target_changes=[]){
@@ -243,8 +286,7 @@ class Project{
 
         }
 
-        let classes_meta=this.run.get_all_classes.all();
-        classes_meta.map(a=>a.metadata=JSON.parse(a.metadata))
+        let classes_meta=this.class_cache;
 
 
         // STEP 2 ============================
@@ -343,16 +385,16 @@ class Project{
 
         // STEP 5 ============================ 
         // submit all prop updates to class_meta
-        let modified_classes=classes_meta.filter(a=>a.modified);
+        let modified_classes=Object.entries(classes_meta).filter(a=>a[1].modified).map(a=>a[1]);
        
         for(let modified of modified_classes) this.run.save_class_meta.run(JSON.stringify(modified.metadata),modified.id);
 
 
-
+        this.refresh_class_cache();
         // STEP 6 (TBD) ===================
         // check if the connections in the new tables follow the conditons of their corresponding properties, and remove any that don't pass muster
 
-
+        
 
         
         // ======================== utility functions ============================
@@ -385,7 +427,7 @@ class Project{
         
 
         function remove_target(prop,target){
-            let prop_class=classes_meta.find(a=>a.id==prop.class_id)
+            let prop_class=classes_meta[prop.class_id];
             
             let class_meta=prop_class.metadata;
             
@@ -399,7 +441,7 @@ class Project{
         }
 
         function add_target(prop,target,junction_id){
-            let prop_class=classes_meta.find(a=>a.id==prop.class_id)
+            let prop_class=classes_meta[prop.class_id]
             let class_meta=prop_class.metadata
             
             let prop_meta=class_meta.properties.find(a=>a.id==prop.prop_id);
@@ -492,7 +534,7 @@ class Project{
 
     action_add_row(class_id,class_name){
         //first add new row to root and get id
-        if(class_name==undefined) class_name=this.run.get_class.get(class_id).name;
+        if(class_name==undefined) class_name=this.class_cache[class_id].name;
         // console.log(class_name)
         this.db.prepare('INSERT INTO system_root VALUES (null)').run();
         const root_id=this.db.prepare('SELECT id FROM system_root ORDER BY id DESC').get().id;
@@ -526,10 +568,10 @@ class Project{
 
     retrieve_class(class_id,class_name,class_meta){
         if(class_name==undefined){
-            let class_data=this.run.get_class.get(class_id);
+            let class_data=this.class_cache[class_id];
             // console.log(class_data)
             class_name=class_data.name;
-            class_meta=JSON.parse(class_data.metadata)
+            class_meta=class_data.metadata;
         };
 
         const class_string=`[class_${class_name}]`;
