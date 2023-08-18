@@ -8,68 +8,89 @@ const project=new Project(':memory:');
 let base_id=project.action_create_class('base');
 // console.log(base_id);
 
-project.action_add_data_property(base_id,'notes',{max:1},'string')
+// project.action_add_data_property(base_id,'notes',{max:1},'string')
+
+project.action_edit_class_schema({
+    class_changes:[
+        {
+            action:'create',
+            class_id:base_id,
+            prop_name:'notes',
+            type:'data',
+            conditions:{max:1},
+            datatype:'string'
+        }
+    ]
+})
+
+
 let base_item1=project.action_add_row(base_id);
 let base_item2=project.action_add_row(base_id);
 
 
-project.action_update_relations([
-    {
-        sides:[
-            {
-                class_id:base_id,
-                prop_name:'test'
-            },
-            {
-                class_name:'A',
-                prop_name:'prop1'
-            }
-        ]
-    },
-    {
-        sides:[
-            {
-                class_id:base_id,
-                prop_name:'test'
-            },
-            {
-                class_name:'B',
-                prop_name:'prop1'
-            }
-        ]
-    },
-    {
-        sides:[
-            {
-                class_id:base_id,
-                prop_name:'test'
-            },
-            {
-                class_name:'C'
-            }
-        ]
-    }
-],[
-    {
-        change:'create',
-        class_id:base_id,
-        prop_name:'test'
-    },
-    {
-        change:'create',
-        class_name:'A',
-        prop_name:'prop1'
-    },
-    {
-        change:'create',
-        class_name:'B',
-        prop_name:'prop1'
-    },
-    {
-        change:'create',
-        class_name:'C'
-    }
-])
+project.action_edit_class_schema({
+    junction_list:[
+        {
+            sides:[
+                {
+                    class_id:base_id,
+                    prop_name:'test'
+                },
+                {
+                    class_name:'A',
+                    prop_name:'prop1'
+                }
+            ]
+        },
+        {
+            sides:[
+                {
+                    class_id:base_id,
+                    prop_name:'test'
+                },
+                {
+                    class_name:'B',
+                    prop_name:'prop1'
+                }
+            ]
+        },
+        {
+            sides:[
+                {
+                    class_id:base_id,
+                    prop_name:'test'
+                },
+                {
+                    class_name:'C'
+                }
+            ]
+        }
+    ],
+    class_changes:[
+        {
+            action:'create',
+            class_id:base_id,
+            prop_name:'test',
+            type:'relation'
+        },
+        {
+            action:'create',
+            class_name:'A',
+            prop_name:'prop1',
+            type:'relation'
+        },
+        {
+            action:'create',
+            class_name:'B',
+            prop_name:'prop1',
+            type:'relation'
+        },
+        {
+            action:'create',
+            class_name:'C',
+        }
+    ]
+})
 
 
 
@@ -93,7 +114,7 @@ project.action_make_relation({class_id:base_id,prop_id:3,object_id:base_item2},{
 let junction_list=project.get_junctions();
 // console.log(junction_list)
 
-project.action_update_relations([
+project.action_edit_class_schema({junction_list:[
     junction_list[0],
     {
         sides:[
@@ -106,7 +127,7 @@ project.action_update_relations([
             }
         ]
     }
-])
+]})
 
 
 let classes=project.retrieve_all_classes();

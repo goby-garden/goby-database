@@ -249,47 +249,64 @@ class Project{
     }
 
 
-    // action_edit_structure(property_changes=[],junction_list){
-    //     // 
-    // }
+    action_edit_class_schema(edits){
+        // class_changes=[],new_junction_list
+        let class_changes=edits.class_changes || [];
+        let junction_list=edits.junction_list;
 
+        for(let change of class_changes){
 
-    action_update_relations(junction_list,target_changes=[]){
-
-        // STEP 1 ============================
-        // create any new classes and/or properties and retrieve their ids, add them to junction_list where they appear
-
-        for(let target of target_changes){
-
-            
-            if(target.change=='create'){
-                if(target.class_id==undefined) target.class_id=this.action_create_class(target.class_name);
-                junction_list.map(junction=>{
-                    let matching=junction.sides.find(
-                        side=>side.class_name==target.class_name);
-                    if(matching) matching.class_id=target.class_id;
-                })
-
-                if(target.prop_name!==undefined){
-                    target.prop_id=this.action_add_relation_property(target.class_id,target.prop_name);
-                    junction_list.map(junction=>{
+            if(change.action=='create'){
+                if(change.class_id==undefined){
+                    change.class_id=this.action_create_class(change.class_name);
+                    if(junction_list) junction_list.map(junction=>{
                         let matching=junction.sides.find(
-                            side=>side.class_id==target.class_id&&side.prop_name==target.prop_name);
-                        if(matching) matching.prop_id=target.prop_id;
+                            side=>side.class_name==change.class_name);
+                        if(matching) matching.class_id=change.class_id;
                     })
                 }
-            }else if(target.change=='delete'){
-                delete_property(target.class_id,target.prop_id);
-            }
+                
+                if(change.prop_name!==undefined){
+                    //if a prop name is specified, that means
+                        // this change involves a property
+                        // that property needs to be created
+                    if(change.type=='relation'){
+                        change.prop_id=this.action_add_relation_property(change.class_id,change.prop_name,change.conditions,change.style);
+                        junction_list.map(junction=>{
+                            let matching=junction.sides.find(
+                                side=>side.class_id==change.class_id&&side.prop_name==change.prop_name);
+                            if(matching) matching.prop_id=change.prop_id;
+                        })
+                    }else if(change.type=='data'){
+                        this.action_add_data_property(change.class_id,change.prop_name,change.conditions,change.datatype,change.style);
+                    }
 
-            
+                }
+            }else if(change.action=='delete'){
+                if(change.prop_id!==undefined){
+                    this.delete_property(change.class_id,change.prop_id);
+                }else{
+                    // delete class
+                }
+                
+                //maybe it's worthwhile and safe to just check the junction list for any relations that include this property, and remove them/convert them if necessary
+            }
 
         }
 
+
+        if(junction_list!==undefined) this.action_update_relations(junction_list)
+        //in the middle of adding update_relations to this generalized funciton
+
+    }
+
+
+    action_update_relations(junction_list){
+  
         let classes_meta=this.class_cache;
 
 
-        // STEP 2 ============================
+        // STEP 1 ============================
         // find all the old junctions which don't appear in the new list
         // add them to a "delete_queue" to schedule them for deletion
         // remove the corresponding targets from the properties they reference
@@ -313,16 +330,12 @@ class Project{
                 delete_queue.push(junction);
             }
             
-            
-
             //delete queue junctions will need to have the targets removed (or left be, if the prop target doesn't match) from their respective props
-        
-            
             
         }
 
         
-        // STEP 3 ============================
+        // STEP 2 ============================
         // a) find all the junctions in the new list that don't appear in the old one
         // b) this means they need to be newly created
         // c) the corresponding targets need to be registered in any referenced properties
@@ -376,14 +389,14 @@ class Project{
             }
         }
 
-        // STEP 4 ============================ 
+        // STEP 3 ============================ 
         // delete the tables in the delete pile
         for(let junction of delete_queue){
             this.delete_junction_table(junction.id);
         }
         
 
-        // STEP 5 ============================ 
+        // STEP 4 ============================ 
         // submit all prop updates to class_meta
         let modified_classes=Object.entries(classes_meta).filter(a=>a[1].modified).map(a=>a[1]);
        
@@ -391,7 +404,8 @@ class Project{
 
 
         this.refresh_class_cache();
-        // STEP 6 (TBD) ===================
+
+        // STEP 5 (TBD) ===================
         // check if the connections in the new tables follow the conditons of their corresponding properties, and remove any that don't pass muster
 
         
