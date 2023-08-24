@@ -1,6 +1,6 @@
 
 
-### Present to-do*:
+### Present to-do:
 
 
 
