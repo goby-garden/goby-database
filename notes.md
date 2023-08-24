@@ -1,13 +1,13 @@
 
 
-### Present to-do*:
+### Present to-do<sup>*</sup>:
 
 
 
 - [ ] use new class retrieval function to perform validation and make sure all relations in a junction at least abide by the `max` set for that function
 - [ ] create `delete relation property` function
 
-_*occasionally outdated/bypassed_
+_<sup>*</sup>occasionally outdated/bypassed_
 
 ---
 
