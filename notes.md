@@ -2,10 +2,10 @@
 
 ### Present to-do*:
 
-
-
 - [ ] use new class retrieval function to perform validation and make sure all relations in a junction at least abide by the `max` set for that function
 - [ ] create `delete relation property` function
+- [ ] test modifying existing relations in various ways, listed in the test suite below
+- [ ] import `goby-database` into `goby-interface` locally using `npm link` and test opening a database/running different commands
 
 _*occasionally outdated/bypassed_
 
@@ -105,9 +105,13 @@ _*occasionally outdated/bypassed_
         * rather than have a single junction table for all of the targets of a property, I'm going to have one junction table for each target. It will have just two columns, one for each class/class.property.
             * following the rule above, the only condition is there can only be one junction table for a class.property and another class
             * junctionlist structure:
-                | id | class A id | prop A id | class B id | prop B id | metadata |
+                ```
+                | id | classA_id.propA_id | classA_id.propA_id | metadata? |
+                ```
             * each junction structure:
-                | classA_id_propA_id | classB_id(_propB_id) |
+                ```
+                | classA_id.propA_id | classB_id.propB_id |`
+                ```
 * maybe "count" could be generalized to a "max" condition?
     * although maybe in the interface still making it a toggle between the single and multi-select that people are familiar with
     * this doesn't work because the conditions are supposed to determine candidates for a relation, and if this is a condition then a single select will have no candidates
