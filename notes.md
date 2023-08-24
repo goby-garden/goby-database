@@ -1,12 +1,15 @@
-# goby-database notes
-
-### Present to-do:
 
 
-- [ ] test the modification of existing relation props and their links in `sandbox.js` to work out the kinks
+### Present to-do*:
+
+
+
 - [ ] use new class retrieval function to perform validation and make sure all relations in a junction at least abide by the `max` set for that function
 - [ ] create `delete relation property` function
 
+_*occasionally outdated/bypassed_
+
+---
 
 ### Things this program should be able to do:
 
@@ -58,6 +61,8 @@
     * deleting rows, columns, and classes
         * for relational properties, the related class should have the option of dropping their column, converting to a string, or (if they're connected to other existing classes) just removing those relations
 
+---
+
 ### Stored data
 * class metadata:
     * functional:
@@ -71,11 +76,13 @@
         * its color
 
 
+---
+
 ### Core concepts:
 * relations types are a unit, embodied by a junction table
     * they define a type of property, shared across its constituent classes
 
-
+---
 
 ### Junction tables
 
@@ -105,6 +112,7 @@
     * although maybe in the interface still making it a toggle between the single and multi-select that people are familiar with
     * this doesn't work because the conditions are supposed to determine candidates for a relation, and if this is a condition then a single select will have no candidates
 
+---
 
 #### Junction table decision flow
 
@@ -122,17 +130,19 @@
 * Validation: 
     * iterate over each object in the class and make sure its relations for this property follow its constraints (which also cleans things up if the constraints changed or if a transfer has happened through another property)
 
-
+---
 
 ### Return format for relation properties:
 * for each row, an array of the objects its connected to, in the format: `{class_id:X,prop_id:X,object_id:X}`
 
+---
 
 ### Names versus IDs:
 * One goal is to make the sql database on its own basically legible
 * However, without care, names will run amuck and renaming something will require changing the name in a thousand places. 
 * The approach to this for classes and properties will be to have their names on the actual tables and columns, and their IDs in places where metadata for classes is stored, so at most you only need to change their name in two places
 
+---
 
 ### Development thoughts:
 
@@ -144,6 +154,8 @@
 * for class retrieval, possibly create a [custom aggregate function](https://github.com/WiseLibs/better-sqlite3/blob/v5.0.1/docs/api.md#aggregatename-options---this)
 * all user input functions begin with "action" and
 
+---
+
 ### Misplaced interface thoughts:
 * relation-select reactivity: instead of some array-copying madness, just have the selector set to the current items as an event, fired with every data update
 * editing relations:
@@ -151,10 +163,12 @@
 * since a system-wide undo/redo could be quite difficult to implement, an alternative could be using transactions, so after making a change, particularly a table structure change, you would be prompted to commit or reject changes
     * MAYBE there could even be an enterable "transaction mode", in which you make a variety of changes, and then make a decision about whether to accept or reject them.
 
+---
+
 ### Misplaced general organization thoughts:
 * maybe the website can have a kind of "timeline" pulling in the goby are.na channels using the api, letting you drag a slider to move forward/backward in the notes i take about it, which appear as a scattered collage
 
-
+---
 
 ### Test suite checklist
 
@@ -182,8 +196,9 @@ Relation properties — test the following actions/options in relevant combinati
 Returning data:
 - [ ] return relation props in the format specified in _Return format for relation properties_
 
+---
 
-
+### Structure of SQL request including relation prop structured as JSON array
 
 ```
 WITH cte AS (SELECT person, ('[' || GROUP_CONCAT(clothing,',') || ']') AS clothing
@@ -208,8 +223,10 @@ ON c.person = p.id;
 
 ```
 
+---
 
 ### Finished to-do archive:
 - [x] set up comparison of old targets to the new targets in `configure_relation_targets` so I don't have to rely on the changes being passed in from the front-end
 - [x] for `case 'unlink'` in `clean_up_junctions`, have any non-existent one-sided junction tables created on the spot
 - [x] write a new class retrieval function that groups relations so each relation property is an array of objects with the format: `{class_id:X,prop_id:X,object_id:X}`
+- [x] test the modification of existing relation props and their links in `sandbox.js` to work out the kinks

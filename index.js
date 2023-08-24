@@ -1,4 +1,5 @@
-import Database from 'better-sqlite3';
+// import Database from 'better-sqlite3';
+const Database = require('better-sqlite3');
 
 class Project{
     constructor(source){
@@ -667,4 +668,7 @@ class Project{
 
 }
 
-export default Project;
+// export default Project;
+module.exports=Project;
+
+// export default Project;

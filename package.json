@@ -10,6 +10,5 @@
   "license": "ISC",
   "dependencies": {
     "better-sqlite3": "^8.5.0"
-  },
-  "type": "module"
+  }
 }
