@@ -19,6 +19,17 @@ class Project{
           console.log('opened goby database');
         }
 
+        this.db.function('junction_obj', (side_a, side_b) => {
+            
+            let split_1=side_a.split('.');
+            let split_2=side_b.split('.');
+            let c1=`"class_id":${split_1[0]}`;
+            let p1=split_1[1]?`,"prop_id":${split_1[1]}`:'';
+            let c2=`"class_id":${split_2[0]}`;
+            let p2=split_2[1]?`,"prop_id":${split_2[1]}`:'';
+            return `[ {${c1}${p1}}, {${c2}${p2}} ]`;
+        });
+
         //prepared statements with arguments so my code isn't as verbose elsewhere
         this.run={
             begin:this.db.prepare('BEGIN IMMEDIATE'),
@@ -29,6 +40,9 @@ class Project{
             get_class_id:this.db.prepare(`SELECT id FROM system_classlist WHERE name = ?`),
             get_all_classes:this.db.prepare(`SELECT id, name, metadata FROM system_classlist`),
             save_class_meta:this.db.prepare(`UPDATE system_classlist set metadata = ? WHERE id = ?`),
+            update_window:this.db.prepare(`UPDATE system_windows set open = @open, type=@type, metadata = @meta WHERE id = @id`),
+            create_window: this.db.prepare(`INSERT INTO system_windows (type,open, metadata) VALUES (@type, @open, @meta)`),
+            get_windows:this.db.prepare(`SELECT id, type, open, metadata FROM system_windows`),
             match_junction:this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a = @input_1 AND side_b = @input_2 ) OR ( side_a = @input_2 AND side_b = @input_1 )`),
             fuzzy_match_junction:this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a LIKE @input_1 AND side_b LIKE @input_2 ) OR ( side_a LIKE @input_2 AND side_b LIKE @input_1 )`)
         }
@@ -48,12 +62,17 @@ class Project{
         
     }
 
+    get_latest_id(table_name){
+        let id=this.db.prepare(`SELECT last_insert_rowid() AS id FROM ${table_name}`).get().id;
+        return id;
+    }
+
     
 
     init(){
 
 
-        //System table to contain all objects in the project.
+        //System table to contain all items in the project.
         this.create_table('system','root',['id INTEGER NOT NULL PRIMARY KEY']);
         
     
@@ -64,23 +83,32 @@ class Project{
         //System table to contain generated image data
         this.create_table('system','images',['file_path TEXT','img_type TEXT','img BLOB']);
         
-        // [TO ADD: special junction table for root objects to reference themselves in individual relation]
+        this.create_table('system','windows',[
+            'id INTEGER NOT NULL PRIMARY KEY',
+            'type TEXT',
+            'open INTEGER',
+            'metadata TEXT'
+        ]);
+        
+
+        // let home_id=this.action_config_window('home',0,{pos:[null,null], size:[540,400]})
+        // let hopper_id=this.action_config_window('hopper',0,{pos:[null,null], size:[300,400]})
+        // console.log('home:',home_id,'hopper:',hopper_id)
+        this.db.prepare(`INSERT INTO system_windows 
+            (type, open, metadata) 
+            VALUES 
+            ('home',0,'${JSON.stringify({pos:[null,null], size:[540,400]})}'),
+            ('hopper',0,'${JSON.stringify({pos:[null,null], size:[300,400]})}')`).run();
+
+        // [TO ADD: special junction table for root items to reference themselves in individual relation]
         this.create_table('system','junction_root',[
             'id_1 INTEGER',
             'id_2 INTEGER',
             'metadata TEXT'
         ]);
+        
 
-        this.db.function('junction_obj', (side_a, side_b) => {
-            
-            let split_1=side_a.split('.');
-            let split_2=side_b.split('.');
-            let c1=`"class_id":${split_1[0]}`;
-            let p1=split_1[1]?`,"prop_id":${split_1[1]}`:'';
-            let c2=`"class_id":${split_2[0]}`;
-            let p2=split_2[1]?`,"prop_id":${split_2[1]}`:'';
-            return `[ {${c1}${p1}}, {${c2}${p2}} ]`;
-        });
+        
    
         
     }
@@ -531,8 +559,8 @@ class Project{
 
         let cls=this.retrieve_class(class_id);
         let prop_name='user_'+cls.metadata.properties.find(a=>a.id==prop_id).name;
-        for(let object of cls.objects){
-            let prop_values=object[prop_name];
+        for(let item of cls.items){
+            let prop_values=item[prop_name];
             console.log(prop_name,prop_values);
         }
 
@@ -567,7 +595,7 @@ class Project{
         /* input = {
             class_id: INT,
             prop_id: INT,
-            object_id: INT
+            item_id: INT
         }
         */
 
@@ -576,7 +604,7 @@ class Project{
             input_2:`${input_2.class_id}.${input_2.prop_id || ''}`
         }
         let junction_id=this.run.match_junction.get(sides)?.id;
-        this.db.prepare(`INSERT INTO junction_${junction_id} ("${sides.input_1}", "${sides.input_2}") VALUES (${input_1.object_id},${input_2.object_id})`).run();
+        this.db.prepare(`INSERT INTO junction_${junction_id} ("${sides.input_1}", "${sides.input_2}") VALUES (${input_1.item_id},${input_2.item_id})`).run();
         
     }
 
@@ -639,16 +667,16 @@ class Project{
             ${cte_joins.join(' ')}
             ${orderby}`;
         
-        let objects=this.db.prepare(query).all();
+        let items=this.db.prepare(query).all();
 
         let stringified_properties=class_meta.properties.filter(a=>a.type=='relation'||a.conditions?.max>1);
-        objects.map(row=>{
+        items.map(row=>{
           for (let prop of stringified_properties){
             row['user_'+prop.name]=JSON.parse(row['user_'+prop.name]);
           }
         })
         return {
-            objects,
+            items,
             metadata:class_meta,
             name:class_name
         };
@@ -665,6 +693,66 @@ class Project{
         return classes;
     }
 
+    retrieve_windows(){
+        let windows=this.run.get_windows.all();
+        windows.map(a=>a.metadata=JSON.parse(a.metadata));
+        return windows;
+    }
+
+    action_config_window(type,open,meta={pos:[null,null], size:[1000,700]},id){
+        if(id!==undefined){
+            this.run.update_window.run({
+                id,
+                open,
+                type,
+                meta:JSON.stringify(meta)
+            })
+        }else{
+ 
+            this.run.create_window.run({
+                open,
+                type,
+                meta:JSON.stringify(meta)
+            })
+            let id=this.get_latest_id('system_windows')
+            return id;
+        }
+        // {pos:[null,null], size:[1000,700]}
+
+        // this.db.prepare(`INSERT INTO system_classlist (name, metadata) VALUES ('${name}','${JSON.stringify(table_meta)}')`)
+    }
+
+
+    create_workspace(open,meta){
+
+        this.run.create_window.run({
+            type:'workspace',
+            open,
+            meta:JSON.stringify(meta)
+        })
+        
+        let id=this.get_latest_id('system_windows')
+        
+        this.create_table('workspace',id,[
+            'block_id INTEGER NOT NULL PRIMARY KEY',
+            'type TEXT',
+            'properties TEXT',
+            'thing_id INTEGER'
+        ]);
+
+        // columns:
+        // - type (of thing, e.g. item, class, etc.)
+        // - block id (assigned for workspace purposes, should be integer primary key)
+        // - data id (item id for type=item, class id for type=class, etc for any categories I add in the future )
+        // - properties (styling like position and size)
+
+        // `"${sides.input_1}" INTEGER`,
+        // `"${sides.input_2}" INTEGER`
+        
+        
+        
+        return id;
+    }
 
 }
 

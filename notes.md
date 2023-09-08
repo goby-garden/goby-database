@@ -1,15 +1,46 @@
+### Goby technical terminology:
+
+Some rough definitions of the terms that I use in the `goby-database` codebase*. 
+
+Conceptual architecture:
+
+* `item`:
+    * an entity possessing `properties`
+    * can either be independent
+        * represented as a free-floating `block` on a `workspace` canvas
+    * ...or belong to a `class`, inheriting the properties it has from said `class`
+        * represented as a row in a table
+* `class`:
+    * the declaration of a kind of `item`, with a user-defined set of properties.
+    * represented as a table, which contains all the items belonging to a class
+* `property`:
+    * some user-defined quality of an `item`, e.g. the title, page length, or genre of a book
+    * two kinds:
+        * `“data” property`: any kind of raw data, i.e. a string of text, a url, a file path, an image, a number, a data, etcetera.
+        * `“relation” property`: a kind of `connection` drawn between items in the database.
+            * For example, an “author” property of books which references items in the “author” class.
+            * It may involve `relations` to multiple different classes/+properties
+* `connection`: 
+    * a link of some kind between two `items`
+* `relation`:
+    * the declaration of a kind of `connection` existing between `items`, mediated through their properties. 
+        * For example, in a parent-child relationship, the "parents" property in a child would be linked to the "children" property in a parent
+    * **`relation` is to `connection` as `class` is to `item`** 
+    * a `junction` is the technical component in SQL by which `connections` belonging to a given `relation` are recorded in the database 
+
+Visual architecture:
+
+* `workspace`:
+    * a gridded, spatial canvas on which `items` and `classes` can be represented and edited visually as rectangular cells of mainly text content. 
+* `block`: 
+    * a discrete object placed somewhere within a workspace
+    * typically the visual representation of an `item` or `class` (and its members)
 
 
-### Present to-do*:
 
-- [ ] use new class retrieval function to perform validation and make sure all relations in a junction at least abide by the `max` set for that function
-- [ ] create `delete relation property` function
-- [ ] test modifying existing relations in various ways, listed in the test suite below
-- [ ] import `goby-database` into `goby-interface` locally using `npm link` and test opening a database/running different commands
 
-_*occasionally outdated/bypassed_
+*Unfortunately for now I can’t compose the definitions without resorting to some level of jargon, loosely pulled from my education in philosophy and logic, as well as some level of circularity, owing to the way these terms are constitued by their relation to other terms.
 
----
 
 ### Things this program should be able to do:
 
@@ -30,12 +61,8 @@ _*occasionally outdated/bypassed_
             * create and/or modify the junction table
     * create objects in classes
     * enter data for property
-    * undo anything (can this be achieved?)
-        * sqlite [undo/redo](https://www.sqlite.org/undoredo.html) allows you to define an "undo event/barrier" so you can set actions in steps
-        * I might be better off just using [transaction ROLLBACK](https://www.digitalocean.com/community/tutorials/sql-commit-sql-rollback)
-            * https://github.com/WiseLibs/better-sqlite3/issues/49
-            * maybe command-S based to generate a back-up
-            * OR maybe I can just use the [`checkpoint()` function](https://github.com/WiseLibs/better-sqlite3/blob/v5.0.1/docs/api.md#checkpointdatabasename---this) in better-sqlite3
+    * undo anything (can this be achieved? see _Implementing undo/redo_ below)
+        * sqlite has [a page](https://www.sqlite.org/undoredo.html) detailing a method for achieving this
     * importing data
         * csv to class
         * ability to convert columns into relations by text-matching
@@ -84,7 +111,7 @@ _*occasionally outdated/bypassed_
 
 ---
 
-### Junction tables
+### Junction tables (how relations work in goby)
 
 * the targeting problem in the old system(see [ref](https://www.are.na/block/17459572)):
     * when you make a relation, you can pick multiple targets. the question is: can those targets have each other as possible relations? in other words, can that junction table host relationships not involving the class on which the junction was initiated?
@@ -116,8 +143,6 @@ _*occasionally outdated/bypassed_
     * although maybe in the interface still making it a toggle between the single and multi-select that people are familiar with
     * this doesn't work because the conditions are supposed to determine candidates for a relation, and if this is a condition then a single select will have no candidates
 
----
-
 #### Junction table decision flow
 
 * Q: does the exact match of classA.property to classB[.property] (or inverse) exist?
@@ -134,12 +159,58 @@ _*occasionally outdated/bypassed_
 * Validation: 
     * iterate over each object in the class and make sure its relations for this property follow its constraints (which also cleans things up if the constraints changed or if a transfer has happened through another property)
 
----
-
-### Return format for relation properties:
+#### Return format for relation properties:
 * for each row, an array of the objects its connected to, in the format: `{class_id:X,prop_id:X,object_id:X}`
 
+
+#### Structure of SQL request including relation prop structured as JSON array
+
+```
+WITH cte AS (SELECT person, ('[' || GROUP_CONCAT(clothing,',') || ']') AS clothing
+  FROM (
+    
+    SELECT person, json_object('type','shirt','id',shirts) AS clothing
+    FROM junction_shirts
+
+    UNION
+
+    SELECT person, json_object('type','pant','id',pants) AS clothing
+    FROM junction_pants
+
+    UNION
+
+    SELECT person, json_object('type','shoe','id',shoes) AS clothing
+    FROM junction_shoes)
+GROUP BY person)
+SELECT p.id, p.name, c.clothing
+FROM people p LEFT JOIN cte c
+ON c.person = p.id;
+
+```
+
 ---
+
+### Window management
+
+After [some considerations](https://www.are.na/block/23294643) about how windows will work in Goby, I’m moving forward with the idea of having the database file store information about windows in a separate table.
+
+Here is what I’m thinking for the table structure:
+
+- `window ID #`
+- `type`: `home`/`hopper`/ or `workspace`
+	- I’m thinking that there will only be one `home` window and one `hopper` window, added during the init process as IDs #1 and #2 in the table
+- `open` : `true`/`false`
+	- goby will iterate over this and check if it has to open anything
+- `metadata`: `{json}`
+	- `.position` (on desktop): `[x,y]`
+	- `.dimensions`:`[w,h]`
+    - `.type`: (for workspaces) `canvas`/`focus`
+	- `.items`:(for workspaces) `[array of objects and tables in this view and their styling meta]`
+		- `.position` (in window): `[x,y]`
+        - other styling TBD...
+
+---
+
 
 ### Names versus IDs:
 * One goal is to make the sql database on its own basically legible
@@ -160,6 +231,7 @@ _*occasionally outdated/bypassed_
 
 ---
 
+
 ### Misplaced interface thoughts:
 * relation-select reactivity: instead of some array-copying madness, just have the selector set to the current items as an event, fired with every data update
 * editing relations:
@@ -171,6 +243,17 @@ _*occasionally outdated/bypassed_
 
 ### Misplaced general organization thoughts:
 * maybe the website can have a kind of "timeline" pulling in the goby are.na channels using the api, letting you drag a slider to move forward/backward in the notes i take about it, which appear as a scattered collage
+
+---
+
+### Implementing undo/redo
+
+* This isn’t top of agenda for me right now because it’s really complicated, and based on my current understanding it shouldn’t be too tricky to build into the codebase later on. 
+* Undo/redo functionality isn’t built into SQLite, but they do detail a way of technically achieving it [here](https://www.sqlite.org/undoredo.html). I don’t fully understand how it works yet.
+* I think a simple first goal, when I do get to this, would be to implement undo/redo when it comes to simple data entry, i.e. changing table cells or adding/deleting entire rows. 
+    * Where I’m anticipating this will get messy is when it comes to Goby’s class design, which allows you to design your own table schema. Undoing/redoing changes to table schema is a more complicated thing which probably isn’t accounted for in the customary approach linked above.
+    * Moreover, I’m expecting that simple changes like adding an object to a class or changing item styling will be the typical use cases for Command-Z functionality.
+    * For class design, I can take advantage of SQLite transactions to provide a brute force way of letting you discard all changes and roll back to a saved state. Maybe the interface can give you some way of “committing” changes, or a way of entering “transaction mode”
 
 ---
 
@@ -200,32 +283,39 @@ Relation properties — test the following actions/options in relevant combinati
 Returning data:
 - [ ] return relation props in the format specified in _Return format for relation properties_
 
+
 ---
 
-### Structure of SQL request including relation prop structured as JSON array
+### Workspaces in the database
 
-```
-WITH cte AS (SELECT person, ('[' || GROUP_CONCAT(clothing,',') || ']') AS clothing
-  FROM (
+- columns in a generated workspace table:
+    - `type` (of thing, e.g. item, class, etc.)
+    - `block id` (assigned for workspace purposes, should be integer primary key)
+    - `thing id` (item id for `type`='item', class id for `type`='class', etc for any categories I add in the future )
+    - `properties` (styling like position and size)
+
+
+
+
+---
+
+### Present to-do*:
+
+- Immediate needs for `goby-interface`:
+    - [ ] set up creation/modification/deletion of new loose items, in order to save text objects back to the database
+    - [ ] set up a system for saving and retrieving workspace contents/blocks; I am thinking it makes sense for them each to have their own contents table to achieve that
     
-    SELECT person, json_object('type','shirt','id',shirts) AS clothing
-    FROM junction_shirts
 
-    UNION
+- Building out the library:
+    - [ ] set up `action_update_relations` to use new class retrieval function to perform condition validation and make sure all relations in a junction at least abide by the `max` set for that function (or else remove them)
+    - [ ] create a way of deleting relation properties and handling any fallout from that; do the same for deleting classes
+    - [ ] test modifying existing relations in various ways, listed in the test suite below
 
-    SELECT person, json_object('type','pant','id',pants) AS clothing
-    FROM junction_pants
 
-    UNION
 
-    SELECT person, json_object('type','shoe','id',shoes) AS clothing
-    FROM junction_shoes)
-GROUP BY person)
-SELECT p.id, p.name, c.clothing
-FROM people p LEFT JOIN cte c
-ON c.person = p.id;
+_*occasionally outdated/bypassed_
 
-```
+
 
 ---
 
@@ -234,3 +324,4 @@ ON c.person = p.id;
 - [x] for `case 'unlink'` in `clean_up_junctions`, have any non-existent one-sided junction tables created on the spot
 - [x] write a new class retrieval function that groups relations so each relation property is an array of objects with the format: `{class_id:X,prop_id:X,object_id:X}`
 - [x] test the modification of existing relation props and their links in `sandbox.js` to work out the kinks
+- [x] import `goby-database` into `goby-interface` locally using `npm link` and test opening a database/running different commands
