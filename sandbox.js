@@ -2,8 +2,8 @@
 // import Project from './index.js';
 const Project = require('./index.js');
 
-const project=new Project(':memory:');
-// const project=new Project('test.db');
+// const project=new Project(':memory:');
+const project=new Project('test.db');
 
 //A starting class with a name field
 let base_id=project.action_create_class('base');
@@ -111,12 +111,12 @@ let c_item1=project.action_add_row(undefined,'C');
 let c_id=project.run.get_class_id.get('C').id;
 
 // making relations
-project.action_make_relation({class_id:base_id,prop_id:3,object_id:base_item1},{class_id:a_id,prop_id:2,object_id:a_item1})
-project.action_make_relation({ class_id:base_id,prop_id:3,object_id:base_item1},{class_id:b_id,prop_id:2,object_id:b_item1})
-project.action_make_relation({class_id:base_id,prop_id:3,object_id:base_item1},{class_id:b_id,prop_id:2,object_id:b_item2})
-project.action_make_relation({ class_id:base_id,prop_id:3,object_id:base_item2},{class_id:b_id,prop_id:2,object_id:b_item2})
-project.action_make_relation({class_id:base_id,prop_id:3,object_id:base_item1},{class_id:c_id,object_id:c_item1})
-project.action_make_relation({class_id:base_id,prop_id:3,object_id:base_item2},{class_id:b_id,prop_id:2,object_id:b_item1})
+project.action_make_relation({class_id:base_id,prop_id:3,item_id:base_item1},{class_id:a_id,prop_id:2,item_id:a_item1})
+project.action_make_relation({ class_id:base_id,prop_id:3,item_id:base_item1},{class_id:b_id,prop_id:2,item_id:b_item1})
+project.action_make_relation({class_id:base_id,prop_id:3,item_id:base_item1},{class_id:b_id,prop_id:2,item_id:b_item2})
+project.action_make_relation({ class_id:base_id,prop_id:3,item_id:base_item2},{class_id:b_id,prop_id:2,item_id:b_item2})
+project.action_make_relation({class_id:base_id,prop_id:3,item_id:base_item1},{class_id:c_id,item_id:c_item1})
+project.action_make_relation({class_id:base_id,prop_id:3,item_id:base_item2},{class_id:b_id,prop_id:2,item_id:b_item1})
 
 let junction_list=project.get_junctions();
 // console.log(junction_list)
@@ -140,4 +140,11 @@ project.action_edit_class_schema({junction_list:[
 let classes=project.retrieve_all_classes();
 console.log(classes[2])
 
-
+let ws_id=project.action_config_window('workspace',1)
+project.action_create_and_add_item_to_workspace(ws_id,{
+    pos:[2,2],
+    size:[5,17]
+},{
+    value:'testing!',
+    type:'text'
+})

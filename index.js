@@ -35,6 +35,7 @@ class Project{
             begin:this.db.prepare('BEGIN IMMEDIATE'),
             commit:this.db.prepare('COMMIT'),
             rollback:this.db.prepare('ROLLBACK'),
+            create_item:this.db.prepare('INSERT INTO system_root(type,value) VALUES (@type, @value)'),
             get_junctionlist:this.db.prepare('SELECT id, junction_obj(side_a, side_b) AS sides, metadata FROM system_junctionlist'),
             get_class:this.db.prepare(`SELECT name, metadata FROM system_classlist WHERE id = ?`),
             get_class_id:this.db.prepare(`SELECT id FROM system_classlist WHERE name = ?`),
@@ -73,7 +74,11 @@ class Project{
 
 
         //System table to contain all items in the project.
-        this.create_table('system','root',['id INTEGER NOT NULL PRIMARY KEY']);
+        this.create_table('system','root',[
+            'id INTEGER NOT NULL PRIMARY KEY',
+            'type TEXT',
+            'value TEXT'
+        ]);
         
     
         //System table to contain metadata for all classes created by user
@@ -573,15 +578,23 @@ class Project{
         if(this.db.inTransaction) this.run.commit.run();
         this.db.close();
     }
+
+    action_create_item({type=null,value=''}){
+        // this.db.prepare('INSERT INTO system_root VALUES (null)').run();
+        this.run.create_item.run({type,value});
+        let id=this.db.prepare('SELECT id FROM system_root ORDER BY id DESC').get().id;
+        return id;
+    }
     
 
     action_add_row(class_id,class_name){
         //first add new row to root and get id
         if(class_name==undefined) class_name=this.class_cache[class_id].name;
         // console.log(class_name)
-        this.db.prepare('INSERT INTO system_root VALUES (null)').run();
-        const root_id=this.db.prepare('SELECT id FROM system_root ORDER BY id DESC').get().id;
-
+        
+        // note for future: instead of letting class_id be undefined, locate it 
+        const root_id=this.action_create_item({type:class_id!==undefined?'class_'+class_id:null});
+        
         //get the last item in class table order and use it to get the order for the new item
         const last_order=this.db.prepare(`SELECT system_order FROM [class_${class_name}] ORDER BY system_order DESC`).get();
         const new_order=last_order?last_order.system_order+1:1;
@@ -709,12 +722,8 @@ class Project{
             })
         }else{
  
-            this.run.create_window.run({
-                open,
-                type,
-                meta:JSON.stringify(meta)
-            })
-            let id=this.get_latest_id('system_windows')
+            let id=this.create_workspace(open,meta)
+            
             return id;
         }
         // {pos:[null,null], size:[1000,700]}
@@ -737,22 +746,52 @@ class Project{
             'block_id INTEGER NOT NULL PRIMARY KEY',
             'type TEXT',
             'properties TEXT',
-            'thing_id INTEGER'
+            'concept_id INTEGER'
         ]);
 
-        // columns:
-        // - type (of thing, e.g. item, class, etc.)
-        // - block id (assigned for workspace purposes, should be integer primary key)
-        // - data id (item id for type=item, class id for type=class, etc for any categories I add in the future )
-        // - properties (styling like position and size)
-
-        // `"${sides.input_1}" INTEGER`,
-        // `"${sides.input_2}" INTEGER`
-        
         
         
         return id;
     }
+
+    action_create_workspace_block({workspace_id,type,properties,concept_id}){
+        // should return block id
+        this.db.prepare(`INSERT INTO workspace_${workspace_id}(type,properties,concept_id) VALUES (@type,@properties,@concept_id)`).run({
+            type,
+            properties:JSON.stringify(properties),
+            concept_id
+        });
+        let block_id=this.db.prepare(`SELECT block_id FROM workspace_${workspace_id} ORDER BY block_id DESC`).get().id;
+        return block_id;
+
+    }
+
+
+    action_create_and_add_item_to_workspace(workspace_id,block_properties,item_data){
+        //I can think of a gazillion different ways this could be generalized in the future, but for now...
+        
+        let {
+            value:item_value,
+            type:item_type
+        } = item_data;
+
+        let item_id=this.action_create_item({type:item_type,value:item_value});
+        
+        let block_id=this.action_create_workspace_block({
+            workspace_id,
+            type:'item',
+            properties:block_properties,
+            concept_id:item_id
+        })
+
+        return {
+            item_id,
+            block_id
+        }
+        // should return the block id and item id
+    }
+
+    
 
 }
 

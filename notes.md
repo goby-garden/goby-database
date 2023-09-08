@@ -291,7 +291,7 @@ Returning data:
 - columns in a generated workspace table:
     - `type` (of thing, e.g. item, class, etc.)
     - `block id` (assigned for workspace purposes, should be integer primary key)
-    - `thing id` (item id for `type`='item', class id for `type`='class', etc for any categories I add in the future )
+    - `concept id` (item id for `type`='item', class id for `type`='class', etc for any categories I add in the future )
     - `properties` (styling like position and size)
 
 
@@ -303,7 +303,16 @@ Returning data:
 
 - Immediate needs for `goby-interface`:
     - [ ] set up creation/modification/deletion of new loose items, in order to save text objects back to the database
+        - [x] determine table scheme of root item table
+        - [x] method to add item to root and return id
+        - [ ] method to remove item from root
     - [ ] set up a system for saving and retrieving workspace contents/blocks; I am thinking it makes sense for them each to have their own contents table to achieve that
+        - [x] workspace table creation method
+        - [ ] method to add item to workspace
+            - needs to get id from root first
+        - [ ] method to remove item from workspace
+        - determine right retrieval format for workspace contents and modify `retrieve_windows` to correspond
+            - could use a `join` to get relevant items
     
 
 - Building out the library:
