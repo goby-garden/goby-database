@@ -715,6 +715,25 @@ class Project{
         return windows;
     }
 
+    retrieve_workspace_contents(id){
+        // get the workspace table
+        let blocks=this.db.prepare(`SELECT * FROM workspace_${id}`).all();
+        for(let block of blocks) block.properties=JSON.parse(block.properties);
+        // get any relevant root items
+        let items=this.db.prepare(`SELECT system_root.* 
+            FROM system_root 
+            LEFT JOIN workspace_${id} 
+            ON system_root.id = workspace_1.concept_id
+            WHERE workspace_${id}.type = 'item';
+        `).all();
+        // get any relevant classes (going to hold off from this for now)
+        
+        return {
+            blocks,
+            items
+        }
+    }
+
     action_config_window(type,open,meta={pos:[null,null], size:[1000,700]},id){
         if(id!==undefined){
             this.run.update_window.run({

@@ -102,6 +102,25 @@ Visual architecture:
         * the property it uses as a label (default:name)
         * its color
 
+---
+
+### Property medata storage second thoughts
+
+Right now the array that declares each property of a class is stored within the class’ metadata object, i.e. within a single `TEXT` column of the `system_class` table. But after implementing workspaces, for which I decided to store block information in generated tables, I’m wondering if it makes sense to do the same for properties, i.e. generate property tables for each class in which their data is more normalized. 
+
+I see some possible advantages of this:
+
+* It would make the database more readable for someone looking at it using an ordinary SQL editor. Rather than having to look inside a table column and parse a nested JSON, you could just look at the list of all the tables and see `class_[name]_properties`, and then see them normalized by type, conditions, styling, etcetera. 
+
+* I discovered the need for unique property IDs when I was designing the relation system, and right now that’s implemented through a sort of jank javascript method. Doing things this way, I could let SQLite handle the IDs using a primary key.
+
+* deleting/adding/modifying properties wouldn’t involve replacing an entire metadata object, it would just be a matter of using `DELETE`/`INSERT` on a property table
+
+* I could possibly add per-workspace property styling/sorting etcetera as a user-generated column in this table (although I would also have to manage adding/deleting this column)
+
+* I could do searches/filtering of properties in SQLite instead of JavaScript
+
+
 
 ---
 
@@ -311,7 +330,7 @@ Returning data:
         - [x] method to add item to workspace
             - needs to get id from root first
         - [x] method to remove item from workspace
-        - [ ] determine right retrieval format for workspace contents and modify `retrieve_windows` to correspond
+        - [x] determine right retrieval format for workspace contents and modify `retrieve_windows` to correspond
             - could use a `join` to get relevant items
     
 
@@ -319,6 +338,7 @@ Returning data:
     - [ ] set up `action_update_relations` to use new class retrieval function to perform condition validation and make sure all relations in a junction at least abide by the `max` set for that function (or else remove them)
     - [ ] create a way of deleting relation properties and handling any fallout from that; do the same for deleting classes
     - [ ] test modifying existing relations in various ways, listed in the test suite below
+    - [ ] possibly modify retrieve class so it joins on the classes its properties are related to and grabs their label 
 
 
 
