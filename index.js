@@ -723,7 +723,7 @@ class Project{
         let items=this.db.prepare(`SELECT system_root.* 
             FROM system_root 
             LEFT JOIN workspace_${id} 
-            ON system_root.id = workspace_1.concept_id
+            ON system_root.id = workspace_${id}.concept_id
             WHERE workspace_${id}.type = 'item';
         `).all();
         // get any relevant classes (going to hold off from this for now)
