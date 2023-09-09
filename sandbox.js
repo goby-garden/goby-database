@@ -2,8 +2,8 @@
 // import Project from './index.js';
 const Project = require('./index.js');
 
-// const project=new Project(':memory:');
-const project=new Project('test.db');
+const project=new Project(':memory:');
+// const project=new Project('test.db');
 
 //A starting class with a name field
 let base_id=project.action_create_class('base');
@@ -102,13 +102,14 @@ project.action_edit_class_schema({
 
 
 // adding rows
-let a_item1=project.action_add_row(undefined,'A');
 let a_id=project.run.get_class_id.get('A').id;
-let b_item1=project.action_add_row(undefined,'B');
+let a_item1=project.action_add_row(a_id,'A');
 let b_id=project.run.get_class_id.get('B').id;
-let b_item2=project.action_add_row(undefined,'B');
-let c_item1=project.action_add_row(undefined,'C');
+let b_item1=project.action_add_row(b_id,'B');
+let b_item2=project.action_add_row(b_id,'B');
 let c_id=project.run.get_class_id.get('C').id;
+let c_item1=project.action_add_row(c_id,'C');
+
 
 // making relations
 project.action_make_relation({class_id:base_id,prop_id:3,item_id:base_item1},{class_id:a_id,prop_id:2,item_id:a_item1})
@@ -141,7 +142,7 @@ let classes=project.retrieve_all_classes();
 console.log(classes[2])
 
 let ws_id=project.action_config_window('workspace',1)
-project.action_create_and_add_item_to_workspace(ws_id,{
+project.action_create_and_add_to_workspace(ws_id,'item',{
     pos:[2,2],
     size:[5,17]
 },{

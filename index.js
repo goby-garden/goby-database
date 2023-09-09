@@ -169,7 +169,7 @@ class Project{
 
         this.create_table('class',name,columns);
 
-        const table_meta={
+        const class_meta={
             properties:[
                 {
                     name:'name',
@@ -193,7 +193,7 @@ class Project{
             }
         };
 
-        this.db.prepare(`INSERT INTO system_classlist (name, metadata) VALUES ('${name}','${JSON.stringify(table_meta)}')`).run();
+        this.db.prepare(`INSERT INTO system_classlist (name, metadata) VALUES ('${name}','${JSON.stringify(class_meta)}')`).run();
         //get the id of newest value from system_classlist and return
         const class_id=this.db.prepare('SELECT id FROM system_classlist ORDER BY id DESC').get().id;
 
@@ -579,21 +579,24 @@ class Project{
         this.db.close();
     }
 
-    action_create_item({type=null,value=''}){
+    action_create_item_in_root({type=null,value=''}){
         // this.db.prepare('INSERT INTO system_root VALUES (null)').run();
         this.run.create_item.run({type,value});
         let id=this.db.prepare('SELECT id FROM system_root ORDER BY id DESC').get().id;
         return id;
+    }
+
+    action_delete_item_from_root(id){
+        this.db.prepare(`DELETE FROM system_root WHERE id = ${id}`).run();
     }
     
 
     action_add_row(class_id,class_name){
         //first add new row to root and get id
         if(class_name==undefined) class_name=this.class_cache[class_id].name;
-        // console.log(class_name)
-        
+
         // note for future: instead of letting class_id be undefined, locate it 
-        const root_id=this.action_create_item({type:class_id!==undefined?'class_'+class_id:null});
+        const root_id=this.action_create_item_in_root({type:class_id!==undefined?'class_'+class_id:null});
         
         //get the last item in class table order and use it to get the order for the new item
         const last_order=this.db.prepare(`SELECT system_order FROM [class_${class_name}] ORDER BY system_order DESC`).get();
@@ -726,9 +729,7 @@ class Project{
             
             return id;
         }
-        // {pos:[null,null], size:[1000,700]}
 
-        // this.db.prepare(`INSERT INTO system_classlist (name, metadata) VALUES ('${name}','${JSON.stringify(table_meta)}')`)
     }
 
 
@@ -766,34 +767,50 @@ class Project{
 
     }
 
+    action_remove_workspace_block({workspace_id,block_id}){
+        this.db.prepare(`DELETE FROM workspace_${workspace_id} WHERE block_id = ${block_id}`).run();
+    }
 
-    action_create_and_add_item_to_workspace(workspace_id,block_properties,item_data){
-        //I can think of a gazillion different ways this could be generalized in the future, but for now...
-        
-        let {
-            value:item_value,
-            type:item_type
-        } = item_data;
+    action_create_and_add_to_workspace(workspace_id,blocktype,block_properties,concept_data){        
+        let concept_id;
+        // concept creation
+        switch(blocktype){
+            case 'item':
+                let {
+                    value:item_value,
+                    type:item_type
+                } = concept_data;
+                concept_id=this.action_create_item_in_root({type:item_type,value:item_value});
+            break;
+            // add cases for class and anything else in the future
+        }
 
-        let item_id=this.action_create_item({type:item_type,value:item_value});
-        
         let block_id=this.action_create_workspace_block({
             workspace_id,
-            type:'item',
+            type:blocktype,
             properties:block_properties,
-            concept_id:item_id
+            concept_id
         })
 
         return {
-            item_id,
+            concept_id,
             block_id
         }
         // should return the block id and item id
     }
 
-    
+    action_remove_from_workspace_and_delete(workspace_id,block_id,blocktype,concept_id){
+        action_remove_workspace_block({workspace_id,block_id});
+        switch(blocktype){
+            case 'item':
+                this.action_delete_item_from_root(concept_id);
+            break;
+        }
+    }
 
 }
+
+
 
 // export default Project;
 module.exports=Project;
