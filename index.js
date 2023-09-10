@@ -590,6 +590,9 @@ class Project{
         this.db.prepare(`DELETE FROM system_root WHERE id = ${id}`).run();
     }
     
+    action_set_root_item_value(id,value){
+        this.db.prepare(`UPDATE system_root set value = ? WHERE id = ?`).run(value,id);
+    }
 
     action_add_row(class_id,class_name){
         //first add new row to root and get id
