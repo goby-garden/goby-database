@@ -142,10 +142,12 @@ let classes=project.retrieve_all_classes();
 console.log(classes[2])
 
 let ws_id=project.action_config_window('workspace',1)
-project.action_create_and_add_to_workspace(ws_id,'item',{
+let ids=project.action_create_and_add_to_workspace(ws_id,'item',{
     pos:[2,2],
     size:[5,17]
 },{
     value:'testing!',
     type:'text'
 })
+
+console.log(ids);

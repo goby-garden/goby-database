@@ -784,7 +784,7 @@ class Project{
             properties:JSON.stringify(properties),
             concept_id
         });
-        let block_id=this.db.prepare(`SELECT block_id FROM workspace_${workspace_id} ORDER BY block_id DESC`).get().id;
+        let block_id=this.db.prepare(`SELECT block_id FROM workspace_${workspace_id} ORDER BY block_id DESC`).get().block_id;
         return block_id;
 
     }
@@ -813,7 +813,7 @@ class Project{
             properties:block_properties,
             concept_id
         })
-
+        
         return {
             concept_id,
             block_id
