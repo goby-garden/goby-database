@@ -822,7 +822,7 @@ class Project{
     }
 
     action_remove_from_workspace_and_delete(workspace_id,block_id,blocktype,concept_id){
-        action_remove_workspace_block({workspace_id,block_id});
+        this.action_remove_workspace_block({workspace_id,block_id});
         switch(blocktype){
             case 'item':
                 this.action_delete_item_from_root(concept_id);
