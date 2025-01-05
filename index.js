@@ -160,12 +160,14 @@ class Project{
     }
 
     action_create_class(name,meta){
-        // if(this.db.inTransaction) this.run.commit.run();
-        // this.run.begin.run();
 
         //a class starts with these basic columns
-        let columns=['system_id INTEGER UNIQUE',
-        'system_order INTEGER','user_name TEXT',`FOREIGN KEY(system_id) REFERENCES system_root(id)`];
+        let columns=[
+            'system_id INTEGER UNIQUE',
+            'system_order INTEGER',
+            'user_name TEXT',
+            `FOREIGN KEY(system_id) REFERENCES system_root(id)`
+        ];
 
         this.create_table('class',name,columns);
 
