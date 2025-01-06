@@ -1,13 +1,48 @@
-// import Database from 'better-sqlite3';
-const Database = require('better-sqlite3');
+import Database from 'better-sqlite3';
+import type { Database as DatabaseType, Statement } from 'better-sqlite3';
+import type {
+    SQLTableType,
+    SQLClassListRow,
+    SQLJunctonListRow,
+    JunctionSides,
+    RelationTarget,
+    JunctionList,
+    ClassList,
+    ClassMetadata,
+    PropertyType,
+    Property,
+    DataType,
+    ItemRelationSide,
+    Action,
+    SQLApplicationWindow,
+    ApplicationWindow,
+    SQLWorkspaceBlockRow,
+    WorkspaceBlock,
+    BinaryBoolean,
+    ClassData,
+    ClassRow
+} from './types.js';
 
-class Project{
-    constructor(source){
+const text_data_types=['string','resource'];
+const real_data_types=['number'];
+
+export default class Project{
+    db:DatabaseType;
+
+    run:{
+        [key:string]:Statement,
+        get_all_classes:Statement<[],SQLClassListRow>,
+        get_junctionlist:Statement<[],SQLJunctonListRow>
+        match_junction:Statement<{input_1:string,input_2:string},{id:number,side_a:string, side_b:string, metadata:string}>
+        get_windows:Statement<[],SQLApplicationWindow>
+    };
+
+    class_cache:ClassList=[];
+
+    junction_cache:JunctionList=[];
+
+    constructor(source:string){
         this.db= new Database(source);
-    
-        this.text_datatypes=['string','resource'];
-        this.real_datatypes=['number'];
-        
     
         
         //checks if goby has been initialized, initializes if not
@@ -20,14 +55,22 @@ class Project{
         }
 
         this.db.function('junction_obj', (side_a, side_b) => {
+            let json_string='';
+            if(typeof side_a=='string'&&typeof side_b=='string'){
+                let split_1=side_a.split('.');
+                let split_2=side_b.split('.');
+                let c1=`"class_id":${split_1[0]}`;
+                let p1=split_1[1]?`,"prop_id":${split_1[1]}`:'';
+                let c2=`"class_id":${split_2[0]}`;
+                let p2=split_2[1]?`,"prop_id":${split_2[1]}`:'';
+                json_string=`[ {${c1}${p1}}, {${c2}${p2}} ]`;
+            }else{
+                json_string=`[]`;
+            }
             
-            let split_1=side_a.split('.');
-            let split_2=side_b.split('.');
-            let c1=`"class_id":${split_1[0]}`;
-            let p1=split_1[1]?`,"prop_id":${split_1[1]}`:'';
-            let c2=`"class_id":${split_2[0]}`;
-            let p2=split_2[1]?`,"prop_id":${split_2[1]}`:'';
-            return `[ {${c1}${p1}}, {${c2}${p2}} ]`;
+            // possibly validate output with template literals in the future
+            // https://stackoverflow.com/questions/57017145/is-it-possible-to-assign-a-partial-wildcard-to-a-type-in-typescript
+            return json_string;
         });
 
         //prepared statements with arguments so my code isn't as verbose elsewhere
@@ -36,14 +79,14 @@ class Project{
             commit:this.db.prepare('COMMIT'),
             rollback:this.db.prepare('ROLLBACK'),
             create_item:this.db.prepare('INSERT INTO system_root(type,value) VALUES (@type, @value)'),
-            get_junctionlist:this.db.prepare('SELECT id, junction_obj(side_a, side_b) AS sides, metadata FROM system_junctionlist'),
+            get_junctionlist:this.db.prepare<[],SQLJunctonListRow>('SELECT id, junction_obj(side_a, side_b) AS sides, metadata FROM system_junctionlist'),
             get_class:this.db.prepare(`SELECT name, metadata FROM system_classlist WHERE id = ?`),
             get_class_id:this.db.prepare(`SELECT id FROM system_classlist WHERE name = ?`),
-            get_all_classes:this.db.prepare(`SELECT id, name, metadata FROM system_classlist`),
+            get_all_classes:this.db.prepare<[],SQLClassListRow>(`SELECT id, name, metadata FROM system_classlist`),
             save_class_meta:this.db.prepare(`UPDATE system_classlist set metadata = ? WHERE id = ?`),
             update_window:this.db.prepare(`UPDATE system_windows set open = @open, type=@type, metadata = @meta WHERE id = @id`),
             create_window: this.db.prepare(`INSERT INTO system_windows (type,open, metadata) VALUES (@type, @open, @meta)`),
-            get_windows:this.db.prepare(`SELECT id, type, open, metadata FROM system_windows`),
+            get_windows:this.db.prepare<[],SQLApplicationWindow>(`SELECT id, type, open, metadata FROM system_windows`),
             match_junction:this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a = @input_1 AND side_b = @input_2 ) OR ( side_a = @input_2 AND side_b = @input_1 )`),
             fuzzy_match_junction:this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a LIKE @input_1 AND side_b LIKE @input_2 ) OR ( side_a LIKE @input_2 AND side_b LIKE @input_1 )`)
         }
@@ -51,35 +94,33 @@ class Project{
         
 
 
-        this.class_cache={};
+        this.class_cache=[];
         this.refresh_class_cache();
         this.junction_cache=[];
         this.refresh_junction_cache();
-        // this.junction_cache;
+
         
+        // commenting this out until I figure out my transaction / one-step-undo functionality
         //if I understand transactions correctly, a new one will begin with every user action while committing the one before, meaning I'll need to have the first begin here
-        //this enables a one-step undo.
         // this.run.begin.run();
         
     }
 
-    get_latest_id(table_name){
-        let id=this.db.prepare(`SELECT last_insert_rowid() AS id FROM ${table_name}`).get().id;
+    get_latest_table_row_id(table_name:string):number | null{
+        let db_get=this.db.prepare<[],{id:number}>(`SELECT last_insert_rowid() AS id FROM ${table_name}`).get();
+        // if no row found, silently return null
+        if(!db_get) return null;
+        let id=db_get.id;
         return id;
     }
 
-    
-
     init(){
-
-
         //System table to contain all items in the project.
         this.create_table('system','root',[
             'id INTEGER NOT NULL PRIMARY KEY',
             'type TEXT',
             'value TEXT'
         ]);
-        
     
         //System table to contain metadata for all classes created by user
         this.create_table('system','classlist',['id INTEGER NOT NULL PRIMARY KEY','name TEXT','metadata TEXT']);
@@ -88,6 +129,7 @@ class Project{
         //System table to contain generated image data
         this.create_table('system','images',['file_path TEXT','img_type TEXT','img BLOB']);
         
+        // window "open" is a boolean stored as 0 or 1
         this.create_table('system','windows',[
             'id INTEGER NOT NULL PRIMARY KEY',
             'type TEXT',
@@ -96,9 +138,6 @@ class Project{
         ]);
         
 
-        // let home_id=this.action_config_window('home',0,{pos:[null,null], size:[540,400]})
-        // let hopper_id=this.action_config_window('hopper',0,{pos:[null,null], size:[300,400]})
-        // console.log('home:',home_id,'hopper:',hopper_id)
         this.db.prepare(`INSERT INTO system_windows 
             (type, open, metadata) 
             VALUES 
@@ -120,118 +159,121 @@ class Project{
 
 
     refresh_class_cache(){
-        let class_array=this.run.get_all_classes.all();
-        let cache_obj={};
-        for(let cls of class_array){
-            cache_obj[cls.id]={
-                id:cls.id,
-                name:cls.name,
-                metadata:JSON.parse(cls.metadata)
-            };
-
+        let class_array=this.retrieve_all_classes();
+        let cache_array:ClassList=[];
+        
+        for(let class_data of class_array){
+            cache_array.push(class_data)
         }
-        this.class_cache=cache_obj;
+        this.class_cache=cache_array;
     }
 
     refresh_junction_cache(){
-        let junction_list=this.run.get_junctionlist.all();
-        junction_list.map(a=>a.sides=JSON.parse(a.sides));
+        let junction_list=this.get_junctions();
         this.junction_cache=junction_list;
     }
 
       
 
-    create_table(type,name,columns){
+    create_table(type:SQLTableType,name:string | number,columns:string[]){
         //type will pass in 'class', 'system', or 'junction' to use as a name prefix
         //columns is an array of raw SQL column strings
         
-    
         let columns_string=columns.join(',');
 
-        //name in brackets to allow special characters
+        //brackets to allow special characters in user-defined names
         // validation test: what happens if there are brackets in the name?
         const sqlname=type=='class'?`[class_${name}]`:`${type}_${name}`;
         let create_statement=`CREATE TABLE ${sqlname}(
           ${columns_string}
         )`;
         this.db.prepare(create_statement).run();
-        
-
     }
 
-    action_create_class(name,meta){
+    action_create_class(name:string ):number{
 
         //a class starts with these basic columns
         let columns=[
             'system_id INTEGER UNIQUE',
-            'system_order INTEGER',
+            'system_order REAL',
             'user_name TEXT',
             `FOREIGN KEY(system_id) REFERENCES system_root(id)`
         ];
 
         this.create_table('class',name,columns);
 
-        const class_meta={
+        const class_meta:ClassMetadata={
             properties:[
                 {
                     name:'name',
                     type:'data',
                     id:1,
-                    datatype:'string',
-                    conditions:{
-                        max:1
-                    },
-                    style:{
-                        display:true,
-                        colwidth:4
-                    }
+                    data_type:'string',
+                    max_values:1,
                 }
             ],
             used_prop_ids:[1],
             style:{
-                color:'#b5ffd5',
-                display:meta?.display || true,
-                position:meta?.position || [0,0]
+                color: '#b5ffd5'
             }
         };
 
         this.db.prepare(`INSERT INTO system_classlist (name, metadata) VALUES ('${name}','${JSON.stringify(class_meta)}')`).run();
         //get the id of newest value from system_classlist and return
-        const class_id=this.db.prepare('SELECT id FROM system_classlist ORDER BY id DESC').get().id;
+        const class_id=this.db.prepare<[],{id:number}>('SELECT id FROM system_classlist ORDER BY id DESC').get()?.id;
+        if(class_id==undefined) throw new Error('Something went wrong when generating new class.');
+
+        // NOTE: in the future, do not declare properties in the metadata. instead, create a properties table for the class and register them there as rows. this may cause a chicken and egg problem though, if I need the property IDs for the class and the class ID for the props.
+        // maybe if I keep this deterministic, and wait for a further step to add user-defined properties, I'll always know the IDs in the newly created property table, i.e. name, whose ID will presumably just be 1.
+
 
         this.refresh_class_cache();
         this.refresh_junction_cache();
 
         return class_id;
         
-
     }
 
 
-    action_add_data_property(class_id,name,conditions,datatype,style){
+    action_add_data_property({
+        class_id,
+        name,
+        data_type,
+        max_values
+    }:{
+        class_id:number,
+        name:string,
+        data_type:DataType,
+        max_values:number,
+    }){
      
-        let class_data=this.class_cache[class_id];
+        let class_data=this.class_cache.find(a=>a.id==class_id);
+        if(class_data == undefined) throw new Error('Cannot find class in class list.');
         let class_name=class_data.name;
         let class_meta=class_data.metadata;
         
-        let id=Math.max(...class_meta.used_prop_ids)+1;
-        class_meta.used_prop_ids.push(id);
-        //create JSON for storage in system_classlist
-        const prop_meta={ type:'data', name,conditions,style,datatype,id};
+        // NOTE: replace with code to add row to a property table ----------
+            let id=Math.max(...class_meta.used_prop_ids)+1;
+            class_meta.used_prop_ids.push(id);
 
-        //add property to property list 
-        class_meta.properties.push(prop_meta);
+            //create JSON for storage in system_classlist
+            const prop_meta:Property={ type:'data', name, max_values, data_type,id};
 
-        let sql_datatype='';
+            //add property to property list 
+            class_meta.properties.push(prop_meta);
 
-        if(conditions.max>1||this.text_datatypes.includes(datatype)){
+        // ------------------------------
+
+        let sql_data_type='';
+
+        if(max_values>1||text_data_types.includes(data_type)){
             //multiple for data means a stringified array no matter what it is
-            sql_datatype='TEXT';
-        }else if(this.real_datatypes.includes(datatype)){
-            sql_datatype='REAL';
+            sql_data_type='TEXT';
+        }else if(real_data_types.includes(data_type)){
+            sql_data_type='REAL';
         }
         //create property in table
-        let command_string=`ALTER TABLE [class_${class_name}] ADD COLUMN [user_${name}] ${sql_datatype};`;
+        let command_string=`ALTER TABLE [class_${class_name}] ADD COLUMN [user_${name}] ${sql_data_type};`;
         this.db.prepare(command_string).run();
 
         //update metadata json for table with new property
@@ -241,91 +283,135 @@ class Project{
 
     }
 
-    action_add_relation_property(class_id,name,conditions,style){
+    action_add_relation_property(class_id:number,name:string,max_values:number){
         // basic property construction------------------
-        let class_meta=this.class_cache[class_id].metadata;
-   
+        let class_meta=this.class_cache.find(a=>a.id==class_id)?.metadata;
+        if(class_meta == undefined) throw new Error('Cannot find class in class list.');
+
         let id=Math.max(...class_meta.used_prop_ids)+1;
         class_meta.used_prop_ids.push(id);
+
+        // NOTE: in the future, register the property in a property table instead-----------------
+
         //create JSON for storage in system_classlist
-        const prop_meta={
+        const prop_meta:Property={
             type:'relation', 
             name,
-            style,
             id,
-            targets:[],
-            conditions
-        }
+            max_values,
+            relation_targets:[],
+        };
         //add property to property list 
         class_meta.properties.push(prop_meta);
 
-
         this.run.save_class_meta.run(JSON.stringify(class_meta),class_id);
+        // -------------------------------------------------
+
         this.refresh_class_cache();
+
+        // WONDERING WHERE THE TARGET / JUNCTION TABLE HANDLING LOGIC IS?
+        // I believe that this function is not intended to be used standalone, but rather as a part of 
+        // action_edit_class_schema, which handles relation changes/additions concurrently for all the classes they affect.
+        // I should make sure class item retrieval doesn't break if a relation prop has no targets though (it should just produce empty arrays)
 
         return id;
  
     }
 
 
-    delete_property(class_id,prop_id){
+    delete_property(class_id:number,prop_id:number){
         //this function is meant to be used within a flow where the relations that need to change as a result of this deletion are already kept track of
 
-        let class_meta=this.class_cache[class_id].metadata;
+        let class_meta=this.class_cache.find(a=>a.id==class_id)?.metadata;
+        if(!class_meta) throw new Error('Cannot locate class to delete property from.');
+        
+        // NOTE: instead of this array splicing, in the future this should modify a SQL table for properties
         let i=class_meta.properties.findIndex(a=>a.id==prop_id);
         class_meta.properties.splice(i,1);
-        this.run.save_class_meta.run(JSON.stringify(class_meta),class_id.id);
+        this.run.save_class_meta.run(JSON.stringify(class_meta),class_id);
         this.refresh_class_cache();
+        
     }
+
 
     get_junctions(){
-        let junction_list=this.run.get_junctionlist.all();
-        junction_list.map(a=>a.sides=JSON.parse(a.sides))
-        return junction_list;
+        let junction_list_sql=this.run.get_junctionlist.all();
+        let junction_list_parsed=junction_list_sql.map(a=>{
+            let sides=JSON.parse(a.sides) as JunctionSides;
+            return {
+                ...a,
+                sides
+            }
+        });
+        return junction_list_parsed;
     }
 
 
-    action_edit_class_schema(edits){
+    action_edit_class_schema(edits:{
+        junction_list?:JunctionList,
+        class_changes:Action[]
+    }){
         // class_changes=[],new_junction_list
         let class_changes=edits.class_changes || [];
         let junction_list=edits.junction_list;
 
         for(let change of class_changes){
 
+            // creates a class, property, or both, inferring based on the information is provided.
             if(change.action=='create'){
-                if(change.class_id==undefined){
+
+                // create a class if there’s no ID set, and a name to register
+                if(!change.class_id && change.class_name){
+                    // create class
                     change.class_id=this.action_create_class(change.class_name);
-                    if(junction_list) junction_list.map(junction=>{
-                        let matching=junction.sides.find(
-                            side=>side.class_name==change.class_name);
-                        if(matching) matching.class_id=change.class_id;
-                    })
+
+                    // if there are new relationships involving this new class,
+                    // set the class_id you just created
+                    if(junction_list&&change.class_id!==undefined){
+                        junction_list.map(junction=>{
+                            let matching=junction.sides.find(side=>side.class_name==change.class_name);
+                            if(matching) matching.class_id=change.class_id as number; // needs "as number" bc of ts scoping I guess?
+                        })
+                    }
                 }
                 
-                if(change.prop_name!==undefined){
-                    //if a prop name is specified, that means
-                        // this change involves a property
-                        // that property needs to be created
+                // if there’s a prop_name listed, we know that needs to be created
+                if("prop_name" in change && change.class_id!==undefined){
                     if(change.type=='relation'){
-                        change.prop_id=this.action_add_relation_property(change.class_id,change.prop_name,change.conditions,change.style);
-                        junction_list.map(junction=>{
-                            let matching=junction.sides.find(
-                                side=>side.class_id==change.class_id&&side.prop_name==change.prop_name);
-                            if(matching) matching.prop_id=change.prop_id;
-                        })
+                        // register the property
+                        change.prop_id=this.action_add_relation_property(change.class_id,change.prop_name,change.max_values);
+                        // same as class find any relationships in the junction list that involve this new property
+                        // and set the ID accordingly
+                        if(junction_list){
+                            junction_list.map(junction=>{
+                                let matching=junction.sides.find(
+                                    side=>side.class_id==change.class_id&&side.prop_name==change.prop_name);
+                                if(matching) matching.prop_id=change.prop_id;
+                            })
+                        }
+
                     }else if(change.type=='data'){
-                        this.action_add_data_property(change.class_id,change.prop_name,change.conditions,change.datatype,change.style);
+                        this.action_add_data_property({
+                            class_id:change.class_id,
+                            name:change.prop_name,
+                            data_type:change.data_type,
+                            max_values:change.max_values
+                        });
                     }
 
                 }
             }else if(change.action=='delete'){
-                if(change.prop_id!==undefined){
+                if(change.subject == 'property'){
                     this.delete_property(change.class_id,change.prop_id);
-                }else{
-                    // delete class
+                }else if(change.subject == 'class'){
+                    this.action_delete_class(change.class_id);
                 }
+                // I need to be able to resolve relations that involve the deleted classes and properties, i.e.
+                    // - remove them as targets from other relation properties
+                    // - delete any junction tables in which they participate
+
                 
-                //maybe it's worthwhile and safe to just check the junction list for any relations that include this property, and remove them/convert them if necessary
+                // maybe it's worthwhile and safe to just check the junction list for any relations that include this property or class, and remove them/convert them if necessary?
             }
 
         }
@@ -336,8 +422,13 @@ class Project{
 
     }
 
+    action_delete_class(class_id:number){
+        // TBD
+        console.log('TBD, class deletion not yet implemented')
+    }
 
-    action_update_relations(junction_list){
+
+    action_update_relations(junction_list:JunctionList){
   
         let classes_meta=this.class_cache;
 
@@ -349,8 +440,6 @@ class Project{
 
         let delete_queue=[];
         let old_junction_list=this.get_junctions();
-        
-
 
         for(let junction of old_junction_list){
             
@@ -448,19 +537,19 @@ class Project{
 
         
         // ======================== utility functions ============================
-        function side_match(x,y){
+        function side_match(x:RelationTarget,y:RelationTarget){
             return x.class_id==y.class_id&&x.prop_id==y.prop_id;
         };
         
         
-        function junction_match(a,b){
+        function junction_match(a:JunctionSides,b:JunctionSides){
             // match sides completely, order doesn't matter
             return (side_match(a[0],b[0])&&side_match(a[1],b[1])) ||
                    (side_match(a[0],b[1])&&side_match(a[1],b[0]));
 
         }
 
-        function partial_junction_match(a,b){
+        function partial_junction_match(a:JunctionSides,b:JunctionSides){
             
            // match both classes
             // match at least one prop
@@ -476,34 +565,31 @@ class Project{
         }
         
 
-        function remove_target(prop,target){
+        function remove_target(prop:RelationTarget,target:RelationTarget){
             let prop_class=classes_meta[prop.class_id];
             
             let class_meta=prop_class.metadata;
             
             let prop_meta=class_meta.properties.find(a=>a.id==prop.prop_id);
             
-            if(prop_meta){
-                let target_index=prop_meta.targets.findIndex(a=>side_match(a,target));
-                if(target_index>=0) prop_meta.targets.splice(target_index,1);
+            if(prop_meta&&prop_meta.type=='relation'){
+                let target_index=prop_meta.relation_targets.findIndex(a=>side_match(a,target));
+                if(target_index>=0) prop_meta.relation_targets.splice(target_index,1);
+                // NOTE: this should not mutate the class metadata. I can definitely just create a modified class queue.
                 prop_class.modified=true;
             }
         }
 
-        function add_target(prop,target,junction_id){
+        function add_target(prop:RelationTarget,target:RelationTarget,junction_id:number){
             let prop_class=classes_meta[prop.class_id]
             let class_meta=prop_class.metadata
             
             let prop_meta=class_meta.properties.find(a=>a.id==prop.prop_id);
             
-            if(prop_meta){
-                let obj={
-                    class_id:target.class_id,
-                    junction_id:junction_id
-                }
-                if(target.prop_id!==undefined) obj.prop_id=target.prop_id;
-                prop_meta.targets.push(obj)
+            if(prop_meta&&prop_meta.type=='relation'){
+                prop_meta.relation_targets.push(target)
              
+                // NOTE: same as above, there’s a better way to handle without mutating
                 prop_class.modified=true;
                 
             }
@@ -513,12 +599,17 @@ class Project{
     }
 
     
-    create_junction_table(sides){
+    create_junction_table(sides:{input_1:string,input_2:string}){
+        // NOTE: in the future I think I'm inclined to store sides as JSON, i.e. {class_id:2,prop_id:1} - slightly more verbose, but a lot more readable and less weird and arbitrary (lol why did I do it in this syntax...)
+        // UPDATE: I think I used this syntax because I need a way to refer to it in junction table column names. but there must be a better way... maybe the column names can always be "side a" and "side b" with the actual props encoded in theh junction list. that seems right.
+
+
         // adds new record to junction table
         this.db.prepare(`INSERT INTO system_junctionlist (side_a, side_b) VALUES ('${sides.input_1}','${sides.input_2}')`).run();
 
         //gets id of new record
-        let id=this.db.prepare('SELECT id FROM system_junctionlist ORDER BY id DESC').get().id;
+        let id=this.db.prepare<[],{id:number}>('SELECT id FROM system_junctionlist ORDER BY id DESC').get()?.id;
+        if(typeof id !== 'number') throw new Error('Something went wrong creating a new relationship');
 
         // creates table
         this.create_table('junction',id,[
@@ -545,14 +636,15 @@ class Project{
         }
     }
 
-    delete_junction_table(id){
+    delete_junction_table(id:number){
         this.db.prepare(`DELETE FROM system_junctionlist WHERE id = ${id}`).run();
         this.db.prepare(`DROP TABLE junction_${id}`).run();
     }
 
-    check_conditions(class_id,prop_id,targets,conditions){
-        /*  conditions={
-            max: integer or undefined,
+    check_conditions({class_id,prop_id,property,class_data}:{class_id?:number,prop_id?:number,property?:Property,class_data:ClassData}){
+        /*  
+        (some early ideas for how the conditions look;for now not gonna deal with filters or rules, just going to check max_values)
+        conditions={
             filters:[
 
             ],
@@ -560,19 +652,29 @@ class Project{
 
             ]
         }
-
-            for now not gonna deal with filters or rules, just going to check max
         */
 
-        let cls=this.retrieve_class(class_id);
-        let prop_name='user_'+cls.metadata.properties.find(a=>a.id==prop_id).name;
-        for(let item of cls.items){
+        if(class_id!==undefined&&!class_data){
+            class_data=this.retrieve_class({class_id});
+        }
+        if(prop_id!==undefined&&!property){
+            // NOTE: change this in the future when properties moved to table
+            property=class_data.metadata.properties.find(a=>a.id==prop_id);
+        }
+
+        if(property==undefined) throw new Error('Could not locate property')
+        let prop_name='user_'+property.name;
+
+        for(let item of class_data.items){
             let prop_values=item[prop_name];
+            // check if they follow the conditions, and adjust if not.
+            // for now I think just check max_values, and trim the values if not
+            // I think (?) I can just read from the output of the cached class data,
+            // and then use a prepare statement to modify data props on this table, and relation props on the corresponding junction table
             console.log(prop_name,prop_values);
         }
 
-        // this is going to require writing the new retrieval function.
-
+        // after everything is done I should probably refresh the cache to get any changes to the items; maybe that can happen in the function where this is invoked though.
 
     }
 
@@ -581,38 +683,41 @@ class Project{
         this.db.close();
     }
 
-    action_create_item_in_root({type=null,value=''}){
+    action_create_item_in_root({type=null,value=''}:{type:string|null,value?:string}){
         // this.db.prepare('INSERT INTO system_root VALUES (null)').run();
         this.run.create_item.run({type,value});
-        let id=this.db.prepare('SELECT id FROM system_root ORDER BY id DESC').get().id;
+        let id=this.db.prepare<[],{id:number}>('SELECT id FROM system_root ORDER BY id DESC').get()?.id;
+        if(typeof id !== 'number') throw new Error('Something went wrong creating a new item');
         return id;
     }
 
-    action_delete_item_from_root(id){
+    action_delete_item_from_root(id:number){
         this.db.prepare(`DELETE FROM system_root WHERE id = ${id}`).run();
     }
     
-    action_set_root_item_value(id,value){
+    action_set_root_item_value(id:number,value:string){
         this.db.prepare(`UPDATE system_root set value = ? WHERE id = ?`).run(value,id);
     }
 
-    action_add_row(class_id,class_name){
-        //first add new row to root and get id
-        if(class_name==undefined) class_name=this.class_cache[class_id].name;
+    action_add_row(class_id:number){
+        let class_data=this.class_cache.find(a=>a.id==class_id);
+        if(class_data == undefined) throw new Error('Cannot find class in class list.');
+        let class_name=class_data.name;
 
-        // note for future: instead of letting class_id be undefined, locate it 
-        const root_id=this.action_create_item_in_root({type:class_id!==undefined?'class_'+class_id:null});
+        //first add new row to root and get id
+        const root_id=this.action_create_item_in_root({type:'class_'+class_id});
+        
         
         //get the last item in class table order and use it to get the order for the new item
-        const last_order=this.db.prepare(`SELECT system_order FROM [class_${class_name}] ORDER BY system_order DESC`).get();
-        const new_order=last_order?last_order.system_order+1:1;
+        const last_ordered_item=this.db.prepare<[],{system_order:number}>(`SELECT system_order FROM [class_${class_name}] ORDER BY system_order DESC`).get();
+        const new_order=last_ordered_item?last_ordered_item.system_order+1000:0;
    
         this.db.prepare(`INSERT INTO [class_${class_name}] (system_id, system_order) VALUES (${root_id},${new_order})`).run();
 
         return root_id;
     }
 
-    action_make_relation(input_1,input_2){
+    action_make_relation(input_1:ItemRelationSide,input_2:ItemRelationSide){
         /* input = {
             class_id: INT,
             prop_id: INT,
@@ -620,20 +725,24 @@ class Project{
         }
         */
 
+        // NOTE this will all need to change if I convert the junction syntax to JSON --------
         let sides={
             input_1:`${input_1.class_id}.${input_1.prop_id || ''}`,
             input_2:`${input_2.class_id}.${input_2.prop_id || ''}`
         }
         let junction_id=this.run.match_junction.get(sides)?.id;
+       
+
         this.db.prepare(`INSERT INTO junction_${junction_id} ("${sides.input_1}", "${sides.input_2}") VALUES (${input_1.item_id},${input_2.item_id})`).run();
+        // -------------------
         
     }
 
 
-    retrieve_class(class_id,class_name,class_meta){
-        if(class_name==undefined){
-            let class_data=this.class_cache[class_id];
-            // console.log(class_data)
+    retrieve_class({class_id,class_name,class_meta}:{class_id:number,class_name?:string,class_meta?:ClassMetadata}){
+        if(class_name==undefined || class_meta == undefined){
+            let class_data=this.class_cache.find(a=>a.id==class_id);
+            if(class_data == undefined) throw new Error('Cannot find class in class list.');
             class_name=class_data.name;
             class_meta=class_data.metadata;
         };
@@ -655,15 +764,18 @@ class Project{
             const target_selects=[];
             const target_joins=[];
             let p_side=`${class_id}.${prop.id}`;
-            let first=prop.targets[0];
+            let first=prop.relation_targets[0];
 
-            for(let i = 0; i < prop.targets.length; i++){
-                let target=prop.targets[i];
+            for(let i = 0; i < prop.relation_targets.length; i++){
+                let target=prop.relation_targets[i];
                 let t_side=`${target.class_id}.${target.prop_id || ''}`;
-
-                let target_select=`
-                SELECT "${p_side}", json_object('target_id','${target.class_id}','id',"${t_side}") AS json_object
-                FROM junction_${target.junction_id}`
+                let junction_id=this.run.match_junction.get({
+                    input_1:p_side,
+                    input_2:t_side
+                })?.id;
+                if(junction_id ==undefined) throw new Error(`Could not find relation data associated with ${class_name}.${prop.name}`);
+                let target_select=`SELECT "${p_side}", json_object('target_id','${target.class_id}','id',"${t_side}") AS json_object
+                FROM junction_${junction_id}`
                 target_selects.push(target_select);
             }
 
@@ -688,15 +800,22 @@ class Project{
             ${cte_joins.join(' ')}
             ${orderby}`;
         
-        let items=this.db.prepare(query).all();
+        // possibly elaborate this any type a little more in the future, e.g. a CellValue or SQLCellValue type that expects some wildcards
+        let items=this.db.prepare<[],ClassRow>(query).all();
 
-        let stringified_properties=class_meta.properties.filter(a=>a.type=='relation'||a.conditions?.max>1);
-        items.map(row=>{
-          for (let prop of stringified_properties){
-            row['user_'+prop.name]=JSON.parse(row['user_'+prop.name]);
-          }
-        })
+        let stringified_properties=class_meta.properties.filter(a=>a.type=='relation'||a.max_values>1);
+        items.map((row)=>{
+            if(row && typeof row == 'object'){
+                for (let prop of stringified_properties){
+                    let prop_sql_name='user_'+prop.name;
+                    if(prop_sql_name in row){
+                        row[prop_sql_name]=JSON.parse(row[prop_sql_name]);
+                    }
+                  }
+            }
+        });
         return {
+            id:class_id,
             items,
             metadata:class_meta,
             name:class_name
@@ -708,7 +827,7 @@ class Project{
         // console.log(classes)
         let classes=[];
         for(let cls of classes_data){
-          classes.push(this.retrieve_class(cls.id,cls.name,JSON.parse(cls.metadata)));
+          classes.push(this.retrieve_class({class_id:cls.id,class_name:cls.name,class_meta:JSON.parse(cls.metadata)}));
         }
 
         return classes;
@@ -720,36 +839,46 @@ class Project{
         return windows;
     }
 
-    retrieve_workspace_contents(id){
+    retrieve_workspace_contents(id:number){
         // get the workspace table
-        let blocks=this.db.prepare(`SELECT * FROM workspace_${id}`).all();
-        for(let block of blocks) block.properties=JSON.parse(block.properties);
+        let blocks=this.db.prepare<[],SQLWorkspaceBlockRow>(`SELECT * FROM workspace_${id}`).all();
+        let blocks_parsed:WorkspaceBlock[]=blocks.map(a=>({
+            ...a,
+            metadata:JSON.parse(a.metadata)
+        }))
+        
+        // for(let block of blocks) block.metadata=JSON.parse(block.metadata);
         // get any relevant root items
         let items=this.db.prepare(`SELECT system_root.* 
             FROM system_root 
             LEFT JOIN workspace_${id} 
-            ON system_root.id = workspace_${id}.concept_id
+            ON system_root.id = workspace_${id}.thing_id
             WHERE workspace_${id}.type = 'item';
         `).all();
         // get any relevant classes (going to hold off from this for now)
         
         return {
-            blocks,
+            blocks_parsed,
             items
         }
     }
 
-    action_config_window(type,open,meta={pos:[null,null], size:[1000,700]},id){
+    action_config_window({type,open,metadata={pos:[null,null], size:[1000,700]},id}:{
+            type:ApplicationWindow["type"],
+            open:ApplicationWindow["open"],
+            metadata:ApplicationWindow["metadata"],
+            id:number
+        }){
         if(id!==undefined){
             this.run.update_window.run({
                 id,
                 open,
                 type,
-                meta:JSON.stringify(meta)
+                meta:JSON.stringify(metadata)
             })
         }else{
  
-            let id=this.create_workspace(open,meta)
+            let id=this.create_workspace(open,metadata)
             
             return id;
         }
@@ -757,77 +886,94 @@ class Project{
     }
 
 
-    create_workspace(open,meta){
+    create_workspace(open:ApplicationWindow["open"],metadata:ApplicationWindow["metadata"]){
 
         this.run.create_window.run({
             type:'workspace',
             open,
-            meta:JSON.stringify(meta)
+            meta:JSON.stringify(metadata)
         })
         
-        let id=this.get_latest_id('system_windows')
+        let id=this.get_latest_table_row_id('system_windows')
+        if(!id) throw Error('Something went wrong creating the window.');
         
         this.create_table('workspace',id,[
             'block_id INTEGER NOT NULL PRIMARY KEY',
             'type TEXT',
-            'properties TEXT',
-            'concept_id INTEGER'
+            'metadata TEXT',
+            'thing_id INTEGER'
         ]);
 
-        
-        
         return id;
     }
 
-    action_create_workspace_block({workspace_id,type,properties,concept_id}){
+    action_create_workspace_block({workspace_id,thing_type,block_metadata,thing_id}:{
+        workspace_id:ApplicationWindow["id"],
+        thing_type:WorkspaceBlock["thing_type"],
+        block_metadata:WorkspaceBlock["metadata"],
+        thing_id:WorkspaceBlock["thing_id"]
+    }){
         // should return block id
-        this.db.prepare(`INSERT INTO workspace_${workspace_id}(type,properties,concept_id) VALUES (@type,@properties,@concept_id)`).run({
-            type,
-            properties:JSON.stringify(properties),
-            concept_id
+        this.db.prepare<{type:string,metadata:string,thing_id:number}>(`INSERT INTO workspace_${workspace_id}(type,metadata,thing_id) VALUES (@type,@metadata,@thing_id)`).run({
+            type:thing_type,
+            metadata:JSON.stringify(block_metadata),
+            thing_id
         });
-        let block_id=this.db.prepare(`SELECT block_id FROM workspace_${workspace_id} ORDER BY block_id DESC`).get().block_id;
+        let block_id=this.db.prepare<[],{block_id:number}>(`SELECT block_id FROM workspace_${workspace_id} ORDER BY block_id DESC`).get()?.block_id;
+        if(block_id==undefined) throw Error("Problem adding block to workspace");
         return block_id;
 
     }
 
-    action_remove_workspace_block({workspace_id,block_id}){
+    action_remove_workspace_block({workspace_id,block_id}:{workspace_id:number,block_id:number}){
         this.db.prepare(`DELETE FROM workspace_${workspace_id} WHERE block_id = ${block_id}`).run();
-    }
+    };
 
-    action_create_and_add_to_workspace(workspace_id,blocktype,block_properties,concept_data){        
-        let concept_id;
-        // concept creation
-        switch(blocktype){
+    action_create_and_add_to_workspace({
+        workspace_id,
+        thing_type,
+        block_metadata,
+        thing_data
+    }:{
+        workspace_id:number,
+        thing_type:WorkspaceBlock["thing_type"],
+        block_metadata:WorkspaceBlock["metadata"],
+        thing_data:any // NOTE: fix this in the future when I define class and standalone item types
+    }){
+        let thing_id;
+        // thing creation
+        switch(thing_type){
             case 'item':
                 let {
                     value:item_value,
                     type:item_type
-                } = concept_data;
-                concept_id=this.action_create_item_in_root({type:item_type,value:item_value});
+                } = thing_data;
+                thing_id=this.action_create_item_in_root({type:item_type,value:item_value});
             break;
             // add cases for class and anything else in the future
         }
 
+        if(!thing_id) throw Error('Something went wrong saving an item from a workspace');
+
         let block_id=this.action_create_workspace_block({
             workspace_id,
-            type:blocktype,
-            properties:block_properties,
-            concept_id
+            thing_type,
+            block_metadata,
+            thing_id
         })
         
         return {
-            concept_id,
+            thing_id,
             block_id
         }
         // should return the block id and item id
     }
 
-    action_remove_from_workspace_and_delete(workspace_id,block_id,blocktype,concept_id){
+    action_remove_from_workspace_and_delete(workspace_id:number,block_id:number,thing_type:WorkspaceBlock["thing_type"],thing_id:number){
         this.action_remove_workspace_block({workspace_id,block_id});
-        switch(blocktype){
+        switch(thing_type){
             case 'item':
-                this.action_delete_item_from_root(concept_id);
+                this.action_delete_item_from_root(thing_id);
             break;
         }
     }

@@ -1,6 +1,6 @@
-
-// import Project from './index.js';
-const Project = require('./index.js');
+// @ts-nocheck
+import Project from './index.js';
+// const Project = require('./index.js');
 
 const project=new Project(':memory:');
 // const project=new Project('test.db');
@@ -10,10 +10,10 @@ let base_id=project.action_create_class('base');
 // console.log(base_id);
 
 
-let win_id=project.action_config_window('workspace',1)
-console.log('win_id:',win_id);
-let windows=project.retrieve_windows();
-console.log(windows)
+// let win_id=project.action_config_window('workspace',1)
+// console.log('win_id:',win_id);
+// let windows=project.retrieve_windows();
+// console.log(windows)
 
 // project.action_add_data_property(base_id,'notes',{max:1},'string')
 
