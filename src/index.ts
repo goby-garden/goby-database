@@ -790,15 +790,16 @@ export default class Project{
         const relation_selections=[];
 
         let relation_properties=class_meta.properties.filter(a=>a.type=='relation');
+        console.log('class_meta.properties',class_meta.properties,'relation_properties',relation_properties)
 
         for (let prop of relation_properties){
             const target_selects=[];
-            const target_joins=[];
             let p_side=`${class_id}.${prop.id}`;
-            let first=prop.relation_targets[0];
-
+            // let first=prop.relation_targets[0];
+            
             for(let i = 0; i < prop.relation_targets.length; i++){
                 let target=prop.relation_targets[i];
+                console.log('target added',target);
                 let t_side=`${target.class_id}.${target.prop_id || ''}`;
                 let junction_id=this.run.match_junction.get({
                     input_1:p_side,
