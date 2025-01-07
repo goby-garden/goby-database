@@ -12,11 +12,15 @@ export type SQLJunctonListRow = {
     metadata: string; // JSON string
   };
 
-export type RelationTarget ={
+export type RelationTargetBase = {
+  class_id?:number;
+  prop_id?:number;
+  class_name?:string;
+  prop_name?:string;
+}
+
+export type RelationTarget = RelationTargetBase & {
     class_id:number;
-    prop_id?:number;
-    class_name?:string;
-    prop_name?:string;
 };
 
 
@@ -25,7 +29,7 @@ export type ItemRelationSide = RelationTarget & {
 }
 
 
-export type JunctionSides =[RelationTarget,RelationTarget];
+
 
 export type ClassMetadata ={
   // NOTE: planning to move these outside of metadata into their own table in the future
@@ -82,11 +86,21 @@ export type ClassData ={
 
 export type ClassList =ClassData[];
 
-export type JunctionList ={
-    id:number,
-    sides:JunctionSides,
-    metadata:{}
-}[];
+
+
+export type JunctionSides =[RelationTarget,RelationTarget];
+
+export type JunctionTable ={
+  id:number,
+  sides:JunctionSides,
+  metadata:{}
+}
+
+
+export type JunctionList =JunctionTable[];
+
+// making a distinction for staging, i.e. junction tables which may or may not have yet been created.
+
 
 export type BaseCreateAction = { 
   action:'create';
@@ -128,16 +142,16 @@ export type ApplicationWindow ={
 // maybe elaborate this in the future
 export type ThingType = 'item' | 'class';
 
-export type SQLWorkspaceBlockRow = {
+export type BaseWorkspaceBlock = {
   block_id:number;
-  metadata:string;
   thing_type:ThingType;
   thing_id:number;
 }
 
-export type WorkspaceBlock ={
-  block_id:number;
+export type SQLWorkspaceBlockRow = BaseWorkspaceBlock & {
+  metadata:string; // json string
+}
+
+export type WorkspaceBlock = BaseWorkspaceBlock & {
   metadata:{};
-  thing_type:ThingType;
-  thing_id:number;
 }

@@ -6,7 +6,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "tsc && node dist/sandbox.js"
+    "test": "tsc && node --enable-source-maps dist/sandbox.js"
   },
   "author": "Nico Chilla",
   "license": "ISC",

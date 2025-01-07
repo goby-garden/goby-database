@@ -5,6 +5,7 @@ import type {
     SQLClassListRow,
     SQLJunctonListRow,
     JunctionSides,
+    RelationTargetBase,
     RelationTarget,
     JunctionList,
     ClassList,
@@ -30,11 +31,12 @@ export default class Project{
     db:DatabaseType;
 
     run:{
-        [key:string]:Statement,
-        get_all_classes:Statement<[],SQLClassListRow>,
-        get_junctionlist:Statement<[],SQLJunctonListRow>
-        match_junction:Statement<{input_1:string,input_2:string},{id:number,side_a:string, side_b:string, metadata:string}>
-        get_windows:Statement<[],SQLApplicationWindow>
+        [key:string]:Statement;
+        get_all_classes:Statement<[],SQLClassListRow>;
+        get_junctionlist:Statement<[],SQLJunctonListRow>;
+        match_junction:Statement<{input_1:string,input_2:string},{id:number,side_a:string, side_b:string, metadata:string}>;
+        get_windows:Statement<[],SQLApplicationWindow>;
+        get_class_id:Statement<[string],{id:number}>;
     };
 
     class_cache:ClassList=[];
@@ -81,7 +83,7 @@ export default class Project{
             create_item:this.db.prepare('INSERT INTO system_root(type,value) VALUES (@type, @value)'),
             get_junctionlist:this.db.prepare<[],SQLJunctonListRow>('SELECT id, junction_obj(side_a, side_b) AS sides, metadata FROM system_junctionlist'),
             get_class:this.db.prepare(`SELECT name, metadata FROM system_classlist WHERE id = ?`),
-            get_class_id:this.db.prepare(`SELECT id FROM system_classlist WHERE name = ?`),
+            get_class_id:this.db.prepare<[string],{id:number}>(`SELECT id FROM system_classlist WHERE name = ?`),
             get_all_classes:this.db.prepare<[],SQLClassListRow>(`SELECT id, name, metadata FROM system_classlist`),
             save_class_meta:this.db.prepare(`UPDATE system_classlist set metadata = ? WHERE id = ?`),
             update_window:this.db.prepare(`UPDATE system_windows set open = @open, type=@type, metadata = @meta WHERE id = @id`),
@@ -348,13 +350,18 @@ export default class Project{
 
 
     action_edit_class_schema(edits:{
-        junction_list?:JunctionList,
-        class_changes:Action[]
+        staged_junctions?:{
+            id?:number;
+            sides:[RelationTargetBase,RelationTargetBase];
+            metadata?:{};
+          }[],
+        class_changes?:Action[]
     }){
         // class_changes=[],new_junction_list
         let class_changes=edits.class_changes || [];
-        let junction_list=edits.junction_list;
+        let staged_junctions=edits.staged_junctions;
 
+        // really these just cover class and property add/drop right now. I could possibly add an edit existing option, not sure if the right place to do edits to relation_targets is here or in the update_relations fn.
         for(let change of class_changes){
 
             // creates a class, property, or both, inferring based on the information is provided.
@@ -367,8 +374,8 @@ export default class Project{
 
                     // if there are new relationships involving this new class,
                     // set the class_id you just created
-                    if(junction_list&&change.class_id!==undefined){
-                        junction_list.map(junction=>{
+                    if(staged_junctions&&change.class_id!==undefined){
+                        staged_junctions.map(junction=>{
                             let matching=junction.sides.find(side=>side.class_name==change.class_name);
                             if(matching) matching.class_id=change.class_id as number; // needs "as number" bc of ts scoping I guess?
                         })
@@ -382,8 +389,8 @@ export default class Project{
                         change.prop_id=this.action_add_relation_property(change.class_id,change.prop_name,change.max_values);
                         // same as class find any relationships in the junction list that involve this new property
                         // and set the ID accordingly
-                        if(junction_list){
-                            junction_list.map(junction=>{
+                        if(staged_junctions){
+                            staged_junctions.map(junction=>{
                                 let matching=junction.sides.find(
                                     side=>side.class_id==change.class_id&&side.prop_name==change.prop_name);
                                 if(matching) matching.prop_id=change.prop_id;
@@ -417,7 +424,27 @@ export default class Project{
         }
 
 
-        if(junction_list!==undefined) this.action_update_relations(junction_list)
+        if(staged_junctions!==undefined){
+            // type guard to make sure each side has at least a class_id defined
+            let validSides = (junction:{sides:[RelationTargetBase,RelationTargetBase]}):junction is {sides:JunctionSides}=>{
+                let j=(junction as {sides:JunctionSides});
+                return j.sides[0].class_id !==undefined && j.sides[1].class_id!==undefined;
+            }
+
+            // using type guard to filter out discrepancies
+            let staged_junctions_with_valid_sides:{
+                id?:number;
+                sides:[RelationTarget,RelationTarget];
+                metadata?:{};
+            }[]=staged_junctions.filter(junction=>validSides(junction));
+
+            // (if this actually filtered something out, then something weird is going on)
+            if(staged_junctions.length!==staged_junctions_with_valid_sides.length) throw Error("There are junctions with no corresponding class; something in the inputted schema is invalid.")
+
+            this.action_update_relations(staged_junctions_with_valid_sides)
+        }
+            
+            
         //in the middle of adding update_relations to this generalized funciton
 
     }
@@ -428,7 +455,11 @@ export default class Project{
     }
 
 
-    action_update_relations(junction_list:JunctionList){
+    action_update_relations(junction_list:{
+            id?:number;
+            sides:[RelationTarget,RelationTarget];
+            metadata?:{};
+        }[]){
   
         let classes_meta=this.class_cache;
 
@@ -438,6 +469,7 @@ export default class Project{
         // add them to a "delete_queue" to schedule them for deletion
         // remove the corresponding targets from the properties they reference
 
+        let modified_classes:ClassList=[];
         let delete_queue=[];
         let old_junction_list=this.get_junctions();
 
@@ -523,8 +555,7 @@ export default class Project{
 
         // STEP 4 ============================ 
         // submit all prop updates to class_meta
-        let modified_classes=Object.entries(classes_meta).filter(a=>a[1].modified).map(a=>a[1]);
-       
+        // NOTE: in the future this should write back to the property table instead of modifying classes?
         for(let modified of modified_classes) this.run.save_class_meta.run(JSON.stringify(modified.metadata),modified.id);
 
 
@@ -575,8 +606,8 @@ export default class Project{
             if(prop_meta&&prop_meta.type=='relation'){
                 let target_index=prop_meta.relation_targets.findIndex(a=>side_match(a,target));
                 if(target_index>=0) prop_meta.relation_targets.splice(target_index,1);
-                // NOTE: this should not mutate the class metadata. I can definitely just create a modified class queue.
-                prop_class.modified=true;
+
+                if(!modified_classes.find((c)=>c.id==prop_class.id)) modified_classes.push(prop_class);
             }
         }
 
@@ -590,7 +621,7 @@ export default class Project{
                 prop_meta.relation_targets.push(target)
              
                 // NOTE: same as above, there’s a better way to handle without mutating
-                prop_class.modified=true;
+                if(!modified_classes.find((c)=>c.id==prop_class.id)) modified_classes.push(prop_class);
                 
             }
         }
@@ -621,9 +652,9 @@ export default class Project{
     }
 
 
-    transfer_connections(source,target){
+    transfer_connections(source:{side_a:string,side_b:string,id:number},target:{side_a:string,side_b:string,id:number}){
         
-        let source_relations=this.db.prepare(`SELECT * FROM junction_${source.id}`).all();
+        let source_relations=this.db.prepare<[],{[key: string]: number}>(`SELECT * FROM junction_${source.id}`).all();
         
         //have to match source sides to target sides in order to determine junction order
         let source_sides=source.side_a.split('.')[0] == target.side_a.split('.')[0]?
@@ -800,6 +831,7 @@ export default class Project{
             ${cte_joins.join(' ')}
             ${orderby}`;
         
+        console.log('query:\n',query)
         // possibly elaborate this any type a little more in the future, e.g. a CellValue or SQLCellValue type that expects some wildcards
         let items=this.db.prepare<[],ClassRow>(query).all();
 
@@ -979,10 +1011,3 @@ export default class Project{
     }
 
 }
-
-
-
-// export default Project;
-module.exports=Project;
-
-// export default Project;
