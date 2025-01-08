@@ -21,7 +21,8 @@ import type {
     WorkspaceBlock,
     BinaryBoolean,
     ClassData,
-    ClassRow
+    ClassRow,
+    PropertyDefinition
 } from './types.js';
 
 const text_data_types=['string','resource'];
@@ -347,6 +348,124 @@ export default class Project{
         });
         return junction_list_parsed;
     }
+
+    action_edit_class_schema_revised({
+        class_edits,
+        property_edits,
+        relationship_edits
+    }:{
+        class_edits:{
+            type:'create' | 'delete' | 'modify_attribute',
+            class_id?:number,
+            class_name?:string,
+            // NOTE: for future type-defining, this should be required if type=='modify_attribute'
+            attribute?:{
+                // ...and this should be one of a list of possible values
+                name:string,
+                // ... and this should be conditioned by the name
+                value:any
+            }
+        }[],
+        property_edits:{
+            type:'create' | 'delete' | 'modify_configuration',
+            class_id?:number,
+            class_name?:string,
+            prop_id?:number,
+            prop_name?:string,
+            // NOTE: for future type-defining, this should be required if type=='modify_configuration'
+            configuration?:PropertyDefinition
+        }[],
+        relationship_edits:{
+            type:'create' | 'delete' | 'transfer',
+            id?:number,
+            sides:[
+                RelationTargetBase,
+                RelationTargetBase
+            ],
+            // if type == 'transfer'; to allow conversion from two-way to one-way relation (and one way to two-way?)
+            new_sides?:[
+                RelationTargetBase,
+                RelationTargetBase
+            ]
+        }[]
+    }){
+
+        // loop over class changes and make/queue them as needed
+        for(let class_edit of class_edits){
+            switch(class_edit.type){
+                case 'create':
+                    if(class_edit.class_name!==undefined){
+                        // register the class and get the ID
+                        let class_id=this.action_create_class(class_edit.class_name);
+                        // find all the properties which reference this new class name, and set the class_id.
+                        for(let property_edit of property_edits){
+                            if(!property_edit.class_id && property_edit.class_name == class_edit.class_name){
+                                property_edit.class_id=class_id;
+                            }
+                        }
+                        // do the same for relations
+                        for(let relationship_edit of relationship_edits){
+                            for(let side of relationship_edit.sides){
+                                if(!side.class_id && side.class_name == class_edit.class_name){
+                                    side.class_id=class_id;
+                                }
+                            }
+                        }
+                    }else{
+                        throw Error("could not find name for new class");
+                    }
+                break;
+                case 'delete':
+                    if(class_edit.class_id){
+                        this.action_delete_class(class_edit.class_id);
+                        // look for any relationships which will be affected by the deletion of this class, and queue relation transfers + deletions as needed (also check if this class is referenced in any entries in relation_edits, and... delete?)
+                
+                    }else{
+                        throw Error("ID for class to delete not provided");
+                    }
+
+                    
+                break;
+                case 'modify_attribute':
+                    // this should be harmless, just key into the attribute of metadata and set the value as desired
+                break;
+            }
+        }
+
+
+        // loop over property changes
+        for(let property_edit of property_edits){
+            switch(property_edit.type){
+                case 'create':
+                    break;
+                case 'delete':
+                    break;
+                case 'modify_configuration':
+                    break;
+            }
+        }
+
+
+        // possibly what I could also do in advance of this loop is verify if any of the changes described here qualify for transfer, based on the current junction list, and convert it to a transfer
+        // e.g. a two-way relation is being created where a one-way relation already existed; that’s an opportunity to transfer.
+        for(let relationship_edit of relationship_edits){
+            switch(relationship_edit.type){
+                case 'create':
+                    // create the corresponding junction table _and_ record the targets in the property definitions
+                    break;
+                case 'delete':
+                    // delete the corresponding junction table and remove target references in the property definitions
+                    break;
+                case 'transfer':
+                    // creates a new junction table and deletes an old one, but transfers the old to the new
+                    // ++ the steps above
+                    break;
+            }
+        }
+
+    }
+
+
 
 
     action_edit_class_schema(edits:{
