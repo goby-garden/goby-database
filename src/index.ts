@@ -22,7 +22,9 @@ import type {
     BinaryBoolean,
     ClassData,
     ClassRow,
-    PropertyDefinition
+    PropertyDefinition,
+    RelationEdit,
+    PropertyEdit
 } from './types.js';
 
 const text_data_types=['string','resource'];
@@ -366,28 +368,8 @@ export default class Project{
                 value:any
             }
         }[],
-        property_edits:{
-            type:'create' | 'delete' | 'modify_configuration',
-            class_id?:number,
-            class_name?:string,
-            prop_id?:number,
-            prop_name?:string,
-            // NOTE: for future type-defining, this should be required if type=='modify_configuration'
-            configuration?:PropertyDefinition
-        }[],
-        relationship_edits:{
-            type:'create' | 'delete' | 'transfer',
-            id?:number,
-            sides:[
-                RelationTargetBase,
-                RelationTargetBase
-            ],
-            // if type == 'transfer'; to allow conversion from two-way to one-way relation (and one way to two-way?)
-            new_sides?:[
-                RelationTargetBase,
-                RelationTargetBase
-            ]
-        }[]
+        property_edits:PropertyEdit[],
+        relationship_edits:RelationEdit[]
     }){
 
         // loop over class changes and make/queue them as needed
@@ -399,17 +381,26 @@ export default class Project{
                         let class_id=this.action_create_class(class_edit.class_name);
                         // find all the properties which reference this new class name, and set the class_id.
                         for(let property_edit of property_edits){
-                            if(!property_edit.class_id && property_edit.class_name == class_edit.class_name){
-                                property_edit.class_id=class_id;
+                            // only a newly created prop would be missing a class id
+                            if(property_edit.type=='create'){
+                                if(
+                                    (!defined(property_edit.class_id)) && 
+                                    property_edit.class_name== class_edit.class_name
+                                ){
+                                    property_edit.class_id=class_id;
+                                }
                             }
                         }
                         // do the same for relations
                         for(let relationship_edit of relationship_edits){
-                            for(let side of relationship_edit.sides){
-                                if(!side.class_id && side.class_name == class_edit.class_name){
-                                    side.class_id=class_id;
+                            if(relationship_edit.type=='create' || relationship_edit.type=='transfer'){
+                                for(let side of relationship_edit.sides){
+                                    if(!side.class_id && side.class_name == class_edit.class_name){
+                                        side.class_id=class_id;
+                                    }
                                 }
                             }
+                            
                         }
                     }else{
                         throw Error("could not find name for new class");
@@ -418,13 +409,19 @@ export default class Project{
                 case 'delete':
                     if(class_edit.class_id){
                         this.action_delete_class(class_edit.class_id);
-                        // look for any relationships which will be affected by the deletion of this class, and queue relation transfers + deletions as needed (also check if this class is referenced in any entries in relation_edits, and... delete?)
-                
+                        // look for any relationships which will be affected by the deletion of this class, and queue relation deletion
+                        let junctions=this.get_junctions();
+                        for(let junction of junctions){
+                            if(junction.sides.some(s=>s.class_id==class_edit.class_id)){
+                                relationship_edits.push({
+                                    type:'delete',
+                                    id:junction.id
+                                })
+                            }
+                        }
                     }else{
                         throw Error("ID for class to delete not provided");
                     }
-
-                    
                 break;
                 case 'modify_attribute':
                     // this should be harmless, just key into the attribute of metadata and set the value as desired
@@ -440,7 +437,7 @@ export default class Project{
                     break;
                 case 'delete':
                     break;
-                case 'modify_configuration':
+                case 'modify':
                     break;
             }
         }
@@ -1130,4 +1127,9 @@ export default class Project{
         }
     }
 
+}
+
+function defined(v:any):boolean{
+    if(v==undefined || v==null) return false;
+    else return true;
 }

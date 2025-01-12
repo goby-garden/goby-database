@@ -29,6 +29,68 @@ export type ItemRelationSide = RelationTarget & {
 }
 
 
+type RelationCreate = {
+  type:'create',
+  sides:[
+    RelationTargetBase,
+    RelationTargetBase
+  ]
+}
+
+type RelationDelete = {
+  type:'delete',
+  id:number
+}
+
+type RelationTransfer = {
+  type:'transfer',
+  id:number,
+  sides:[
+    RelationTarget,
+    RelationTarget
+  ],
+  // ; to allow conversion from two-way to one-way relation (and one way to two-way?)
+  new_sides:[
+    RelationTargetBase,
+    RelationTargetBase
+  ]
+}
+
+
+export type RelationEdit = RelationCreate | RelationDelete | RelationTransfer;
+
+// {
+//   type:'create' | 'delete' | 'modify_config',
+//   class_id?:number,
+//   class_name?:string,
+//   prop_id?:number,
+//   prop_name?:string,
+//   // NOTE: for future type-defining, this should be required if type=='modify_configuration'
+//   config?:PropertyDefinition
+// }
+
+type PropertyCreate ={
+  type:'create',
+  prop_name:string
+  class_id?:number,
+  class_name?:string,
+  config:PropertyDefinition
+}
+
+type PropertyDelete = {
+  type:'delete',
+  class_id:number
+  prop_id:number
+}
+
+type PropertyModify ={
+  type:'modify',
+  prop_id:number,
+  class_id:number
+  config:PropertyDefinition
+}
+
+export type PropertyEdit = PropertyCreate | PropertyDelete | PropertyModify
 
 
 export type ClassMetadata ={
