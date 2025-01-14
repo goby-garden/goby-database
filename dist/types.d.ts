@@ -21,6 +21,66 @@ export type RelationTarget = RelationTargetBase & {
 export type ItemRelationSide = RelationTarget & {
     item_id: number;
 };
+type RelationCreate = {
+    type: 'create';
+    sides: [
+        RelationTargetBase,
+        RelationTargetBase
+    ];
+};
+type RelationDelete = {
+    type: 'delete';
+    id: number;
+};
+type RelationTransfer = {
+    type: 'transfer';
+    id: number;
+    sides: [
+        RelationTarget,
+        RelationTarget
+    ];
+    new_sides: [
+        RelationTargetBase,
+        RelationTargetBase
+    ];
+};
+export type RelationEdit = RelationCreate | RelationDelete | RelationTransfer;
+type PropertyCreate = {
+    type: 'create';
+    prop_name: string;
+    class_id?: number;
+    class_name?: string;
+    config: PropertyDefinition;
+};
+type PropertyDelete = {
+    type: 'delete';
+    class_id: number;
+    prop_id: number;
+};
+type PropertyModify = {
+    type: 'modify';
+    prop_id: number;
+    class_id: number;
+    config: PropertyDefinition;
+};
+export type PropertyEdit = PropertyCreate | PropertyDelete | PropertyModify;
+type ClassCreate = {
+    type: 'create';
+    class_name: string;
+};
+type ClassDelete = {
+    type: 'delete';
+    class_id: number;
+};
+type ClassModify = {
+    type: 'modify_attribute';
+    class_id: number;
+    attribute: {
+        name: string;
+        value: any;
+    };
+};
+export type ClassEdit = ClassCreate | ClassDelete | ClassModify;
 export type ClassMetadata = {
     properties: Property[];
     used_prop_ids: number[];
@@ -52,7 +112,9 @@ export type DataProperty = BaseProperty & DataDefinition;
 export type Property = RelationProperty | DataProperty;
 export type PropertyDefinition = {
     max_values: number;
-} & (RelationDefinition | DataDefinition);
+} & ({
+    type: 'relation';
+} | DataDefinition);
 export type ClassRow = {
     [key: string]: any;
 };
@@ -116,3 +178,4 @@ export type SQLWorkspaceBlockRow = BaseWorkspaceBlock & {
 export type WorkspaceBlock = BaseWorkspaceBlock & {
     metadata: {};
 };
+export {};

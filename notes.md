@@ -364,6 +364,44 @@ _*occasionally outdated/bypassed_
 
 ### Scratchpad
 
+1/13/2025
+
+Current to-do:
+- [ ] refactor junctions so that:
+    - in the junction list, the following are normalized: side_a_class_id, side_a_prop_id, side_b_class_id, side_b_prop_id
+        - should be retrieved as a JunctionSides json array
+    - in individual junctions, the columns are just side_a and side_b
+- [ ] implement junction transfer 
+- [ ] refactor properties so they exist in their own tables, created when classes are created
+- [ ] refactor class/junction retrieval and caching
+    - reflect above changes 
+    - separate retrieval of items, properties, and relations
+    - get relation targets from junction list rather than storing them on the property (DRY)
+--- 
+
+Currently working through revising the edit schema function. The class and prop edit loops were simple enough but the relationship edits introduce some complexity:
+
+- relationships can be one-way (e.g. class A prop 1 -> class B) or two-way (e.g. class A prop 1 <-> class B prop 2)
+- if a two-way is converted to a one-way, or vice versa (i.e., when **both of the classes** and **at least one of the properties** persist) we want to transfer the old connections to the new relationship, instead of deleting entirely.
+- I should also enforce the rule that a property can only target one property from a class
+
+How to handle this? What I’m thinking: 
+
+1. create a new consolidated edits array
+2. add the type:"transfer" relations to the array
+3. loop through type:"create" relations
+    - check if there’s an existing relation that matches both classes and one property
+        - if it exists:
+            - look for a type:"delete" which deletes this relation
+                - if there’s a delete, push a transfer
+                - if there’s not a delete, ignore this creation because it’s invalid
+        - if it does not exist
+            - add the type:"create" normally
+4. loop through the type:"delete" relations
+    - check if there’s already a transfer for it in the consolidated array, and ignore if so
+5. loop through the consolidated edits array and apply the changes
+
+
 
 1/7/2025
 - the current dilemma is an empty selection is showing up for `FROM` in the class retrieval SQL query, causing a syntax error. I’ve isolated the problem to be that in the sandbox file, I’m attempting to create a relation property without specifying targets, although the property implicitly has some targets, just based on the junctions I’m declaring in the same `action_edit_class_schema` call. So there are a few dimensions here:

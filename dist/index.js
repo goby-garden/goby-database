@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { defined } from './utils.js';
 const text_data_types = ['string', 'resource'];
 const real_data_types = ['number'];
 export default class Project {
@@ -208,7 +209,6 @@ export default class Project {
         class_meta.properties.push(prop_meta);
         this.run.save_class_meta.run(JSON.stringify(class_meta), class_id);
         // -------------------------------------------------
-        this.refresh_class_cache();
         // WONDERING WHERE THE TARGET / JUNCTION TABLE HANDLING LOGIC IS?
         // I believe that this function is not intended to be used standalone, but rather as a part of 
         // action_edit_class_schema, which handles relation changes/additions concurrently for all the classes they affect.
@@ -222,6 +222,7 @@ export default class Project {
         if (!class_meta)
             throw new Error('Cannot locate class to delete property from.');
         // NOTE: instead of this array splicing, in the future this should modify a SQL table for properties
+        // NOTE: I need to check the metadata, and if it's a data property, I need also an ALTER TABLE statement here to delete the column
         let i = class_meta.properties.findIndex(a => a.id == prop_id);
         class_meta.properties.splice(i, 1);
         this.run.save_class_meta.run(JSON.stringify(class_meta), class_id);
@@ -234,6 +235,179 @@ export default class Project {
             return Object.assign(Object.assign({}, a), { sides });
         });
         return junction_list_parsed;
+    }
+    action_edit_class_schema_revised({ class_edits, property_edits, relationship_edits }) {
+        var _a, _b, _c;
+        // get the list of existing relationships
+        let existing_junctions = this.get_junctions();
+        // loop over class changes and make/queue them as needed
+        for (let class_edit of class_edits) {
+            switch (class_edit.type) {
+                case 'create':
+                    if (class_edit.class_name !== undefined) {
+                        // register the class and get the ID
+                        let class_id = this.action_create_class(class_edit.class_name);
+                        // find all the properties which reference this new class name, and set the class_id.
+                        for (let prop_edit of property_edits) {
+                            // only a newly created prop would be missing a class id
+                            if (prop_edit.type == 'create') {
+                                if ((!defined(prop_edit.class_id)) &&
+                                    prop_edit.class_name == class_edit.class_name) {
+                                    prop_edit.class_id = class_id;
+                                }
+                            }
+                        }
+                        // do the same for relations
+                        for (let relationship_edit of relationship_edits) {
+                            if (relationship_edit.type == 'create' || relationship_edit.type == 'transfer') {
+                                for (let side of relationship_edit.sides) {
+                                    if (!side.class_id && side.class_name == class_edit.class_name) {
+                                        side.class_id = class_id;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        throw Error("could not find name for new class");
+                    }
+                    break;
+                case 'delete':
+                    if (class_edit.class_id) {
+                        this.action_delete_class(class_edit.class_id);
+                        // look for any relationships which will be affected by the deletion of this class, and queue deletion
+                        for (let junction of existing_junctions) {
+                            if (junction.sides.some(s => s.class_id == class_edit.class_id)) {
+                                relationship_edits.push({
+                                    type: 'delete',
+                                    id: junction.id
+                                });
+                            }
+                        }
+                    }
+                    else {
+                        throw Error("ID for class to delete not provided");
+                    }
+                    break;
+                case 'modify_attribute':
+                    // TBD, will come back to this after relation stuff is sorted
+                    // this should be harmless, just key into the attribute of metadata and set the value as desired
+                    break;
+            }
+        }
+        // loop over property changes
+        for (let prop_edit of property_edits) {
+            switch (prop_edit.type) {
+                case 'create':
+                    // class ID should be defined in class creation loop
+                    if (defined(prop_edit.class_id)) {
+                        // register the property
+                        if (prop_edit.config.type == 'relation') {
+                            const prop_id = this.action_add_relation_property(prop_edit.class_id, prop_edit.prop_name, prop_edit.config.max_values);
+                            // look for any relations which match the class id and prop name
+                            // set their prop ID to the newly created one.
+                            for (let relationship_edit of relationship_edits) {
+                                if (relationship_edit.type == 'create' || relationship_edit.type == 'transfer') {
+                                    for (let side of relationship_edit.sides) {
+                                        if (side.class_id == prop_edit.class_id &&
+                                            !defined(side.prop_id) &&
+                                            side.prop_name == prop_edit.prop_name) {
+                                            side.prop_id = prop_id;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        else if (prop_edit.config.type == 'data') {
+                            // if it's a data prop, it just has to be registered in the class table and metadata
+                            this.action_add_data_property({
+                                class_id: prop_edit.class_id,
+                                name: prop_edit.prop_name,
+                                data_type: prop_edit.config.data_type,
+                                max_values: prop_edit.config.max_values
+                            });
+                        }
+                    }
+                    break;
+                case 'delete':
+                    let prop = (_c = (_b = (_a = this.class_cache.find(a => a.id == prop_edit.class_id)) === null || _a === void 0 ? void 0 : _a.metadata) === null || _b === void 0 ? void 0 : _b.properties) === null || _c === void 0 ? void 0 : _c.find((a) => a.id == prop_edit.prop_id);
+                    if (prop && prop.type == 'relation') {
+                        // queue the deletion or transfer of relations involving this prop
+                        for (let junction of existing_junctions) {
+                            let includes_prop = junction.sides.find(s => {
+                                return s.class_id == prop_edit.class_id && s.prop_id == prop_edit.prop_id;
+                            });
+                            if (includes_prop) {
+                                let non_matching = junction.sides.find(s => !(s.class_id == prop_edit.class_id && s.prop_id == prop_edit.prop_id));
+                                if (non_matching) {
+                                    if (defined(non_matching === null || non_matching === void 0 ? void 0 : non_matching.prop_id)) {
+                                        // if there is a prop on the other side of the relation,
+                                        // queue a transfer to a one-sided relation
+                                        relationship_edits.push({
+                                            type: 'transfer',
+                                            id: junction.id,
+                                            sides: junction.sides,
+                                            new_sides: [
+                                                non_matching,
+                                                { class_id: prop_edit.class_id }
+                                            ]
+                                        });
+                                    }
+                                    else {
+                                        // if not, no reason to keep that relation around
+                                        relationship_edits.push({
+                                            type: 'delete',
+                                            id: junction.id
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // NOTE: I might un-encapsulate the create and delete functions, given they should only be used from within this function
+                    this.delete_property(prop_edit.class_id, prop_edit.prop_id);
+                    break;
+                case 'modify':
+                    // TBD, will come back to this after relation stuff is sorted
+                    // changing property metadata, not including relationship targets
+                    // and making any necessary changes to cell values
+                    break;
+            }
+        }
+        // possibly what I could also do in advance of this loop is verify if any of the changes described here qualify for transfer, based on the current junction list, and convert it to a transfer
+        // e.g. a two-way relation is being created where a one-way relation already existed; that’s an opportunity to transfer.
+        // 1. create a new consolidated edits array
+        // 2. add the type:"transfer" relations to the array
+        const consolidated_relationship_edits = relationship_edits.filter(r => r.type == 'transfer');
+        // 3. loop through type:"create" relations
+        for (let create of relationship_edits.filter(r => r.type == 'create')) {
+            // check if there’s an existing relation that matches both classes and one property
+            let existing = existing_junctions.find((r) => {
+            });
+        }
+        //         - if it exists:
+        //             - look for a type:"delete" which deletes this relation
+        //                 - if there’s a delete, push a transfer
+        //                 - if there’s not a delete, ignore this creation because it’s invalid
+        //         - if it does not exist
+        //             - add the type:"create" normally
+        // 4. loop through the type:"delete" relations
+        //     - check if there’s already a transfer for it in the consolidated array, and ignore if so
+        // 5. loop through the consolidated edits array and apply the changes
+        for (let relationship_edit of relationship_edits) {
+            switch (relationship_edit.type) {
+                case 'create':
+                    // create the corresponding junction table _and_ record the targets in the property definitions
+                    break;
+                case 'delete':
+                    // delete the corresponding junction table and remove target references in the property definitions
+                    break;
+                case 'transfer':
+                    // creates a new junction table and deletes an old one, but transfers the old to the new
+                    // ++ the steps above
+                    break;
+            }
+        }
     }
     action_edit_class_schema(edits) {
         // class_changes=[],new_junction_list
@@ -737,4 +911,14 @@ export default class Project {
         }
     }
 }
+// // match both classes
+//  // match at least one prop
+//  let a0_match_i=b.findIndex(side=>a[0].class_id==side.class_id);
+//  let a1_match_i=b.findIndex(side=>a[1].class_id==side.class_id);
+//  if(a0_match_i>=0&&a1_match_i>=0&&a0_match_i!==a1_match_i){
+//      return b[a0_match_i].prop_id==a[0].prop_id||
+//             b[a1_match_i].prop_id==a[1].prop_id
+//  }else{
+//      return false;
+//  }
 //# sourceMappingURL=index.js.map

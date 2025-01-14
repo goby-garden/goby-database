@@ -59,16 +59,6 @@ type RelationTransfer = {
 
 export type RelationEdit = RelationCreate | RelationDelete | RelationTransfer;
 
-// {
-//   type:'create' | 'delete' | 'modify_config',
-//   class_id?:number,
-//   class_name?:string,
-//   prop_id?:number,
-//   prop_name?:string,
-//   // NOTE: for future type-defining, this should be required if type=='modify_configuration'
-//   config?:PropertyDefinition
-// }
-
 type PropertyCreate ={
   type:'create',
   prop_name:string
@@ -92,6 +82,28 @@ type PropertyModify ={
 
 export type PropertyEdit = PropertyCreate | PropertyDelete | PropertyModify
 
+type ClassCreate = {
+  type:'create',
+  class_name:string
+}
+
+type ClassDelete = {
+  type:'delete',
+  class_id:number
+}
+
+type ClassModify = {
+  type:'modify_attribute';
+  class_id:number;
+  attribute:{
+    // NOTE: for future defining, this should be one of a list of possible values
+    name:string;
+    // ... and this should be conditioned by the name
+    value:any;
+  }
+}
+
+export type ClassEdit = ClassCreate | ClassDelete | ClassModify;
 
 export type ClassMetadata ={
   // NOTE: planning to move these outside of metadata into their own table in the future
@@ -134,7 +146,7 @@ export type DataProperty = BaseProperty & DataDefinition;
 
 export type Property = RelationProperty | DataProperty;
 
-export type PropertyDefinition = {max_values:number} & (RelationDefinition | DataDefinition);
+export type PropertyDefinition = {max_values:number} & ({type:'relation'} | DataDefinition);
 
 
 export type ClassRow={ [key: string]: any };
