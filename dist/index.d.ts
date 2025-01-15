@@ -1,5 +1,5 @@
 import type { Database as DatabaseType, Statement } from 'better-sqlite3';
-import type { SQLTableType, SQLClassListRow, SQLJunctonListRow, JunctionSides, JunctionList, ClassList, ClassMetadata, Property, DataType, ItemRelationSide, SQLApplicationWindow, ApplicationWindow, WorkspaceBlock, ClassData, ClassRow, ClassEdit, RelationEdit, PropertyEdit, MaxValues } from './types.js';
+import type { SQLTableType, SQLClassListRow, SQLJunctonListRow, JunctionSides, JunctionList, ClassList, Property, DataType, ItemRelationSide, SQLApplicationWindow, ApplicationWindow, WorkspaceBlock, ClassData, ClassRow, ClassEdit, RelationEdit, PropertyEdit, MaxValues, PropertyType, RelationProperty, DataProperty } from './types.js';
 export default class Project {
     db: DatabaseType;
     run: {
@@ -19,19 +19,23 @@ export default class Project {
         }>;
     };
     class_cache: ClassList;
+    item_cache: {
+        class_id: number;
+        items: ClassRow[];
+    }[];
     junction_cache: JunctionList;
     constructor(source: string);
     get_latest_table_row_id(table_name: string): number | null;
     init(): void;
-    refresh_class_cache(): void;
-    refresh_junction_cache(): void;
+    refresh_caches(caches: ('classlist' | 'items' | 'junctions')[]): void;
     create_table(type: SQLTableType, name: string | number, columns: string[]): void;
     action_create_class(name: string): number;
-    action_add_data_property({ class_id, name, data_type, max_values }: {
+    action_add_data_property({ class_id, name, data_type, max_values, create_column }: {
         class_id: number;
         name: string;
         data_type: DataType;
         max_values: MaxValues;
+        create_column?: boolean;
     }): void;
     action_add_relation_property(class_id: number, name: string, max_values: MaxValues): number;
     delete_property(class_id: number, prop_id: number): void;
@@ -72,22 +76,20 @@ export default class Project {
     action_set_root_item_value(id: number, value: string): void;
     action_add_row(class_id: number): number;
     action_make_relation(input_1: ItemRelationSide, input_2: ItemRelationSide): void;
-    retrieve_class({ class_id, class_name, class_meta }: {
+    retrieve_class_items({ class_id, class_name, class_data }: {
         class_id: number;
         class_name?: string;
-        class_meta?: ClassMetadata;
-    }): {
+        class_data?: ClassData;
+    }): ClassRow[];
+    retrieve_all_classes(): ClassData[];
+    parse_sql_prop(class_id: number, sql_prop: {
         id: number;
-        items: ClassRow[];
-        metadata: ClassMetadata;
+        type: PropertyType;
+        data_type: 'string' | null;
+        max_values: MaxValues;
         name: string;
-    };
-    retrieve_all_classes(): {
-        id: number;
-        items: ClassRow[];
-        metadata: ClassMetadata;
-        name: string;
-    }[];
+        metadata: string;
+    }): (DataProperty | RelationProperty);
     retrieve_windows(): SQLApplicationWindow[];
     retrieve_workspace_contents(id: number): {
         blocks_parsed: WorkspaceBlock[];

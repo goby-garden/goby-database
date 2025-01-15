@@ -25,13 +25,16 @@ export function partial_relation_match(old_relation, new_relation) {
             let match_b_old = old_relation[opposite_index];
             ;
             // should return true if the properties match on at least one side
-            if (properties_match(match_a_new, match_a_old) || properties_match(match_b_new, match_b_old)) {
+            if (properties_exist_and_match(match_a_new, match_a_old) || properties_exist_and_match(match_b_new, match_b_old)) {
                 return true;
             }
         }
     }
     // if no matches found, return false found, 
     return false;
+}
+function properties_exist_and_match(a, b) {
+    return defined(a.prop_id) && defined(b.prop_id) && a.prop_id == b.prop_id;
 }
 function properties_match(a, b) {
     if (!defined(a.prop_id) && !defined(b.prop_id))

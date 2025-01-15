@@ -371,10 +371,10 @@ Current to-do:
     - in the junction list, the following are normalized: side_a_class_id, side_a_prop_id, side_b_class_id, side_b_prop_id
         - should be retrieved as a JunctionSides json array
     - in individual junctions, the columns should be a little more descriptive, e.g. class_2_property_5 or class_3
-- [ ] refactor properties so they exist in their own tables, and are created when classes are created
-- [ ] refactor class/junction retrieval and caching
-    - reflect above changes 
-    - separate retrieval of items, properties, and relations
+- [x] refactor properties so they exist in their own tables, and are created when classes are created
+- [x] refactor class/junction retrieval and caching
+    - [x] reflect above changes 
+    - [x] separate retrieval of items, properties, and relations
     - [x] get relation targets from junction list rather than storing them on the property (DRY)
 - [ ] implement junction transfer 
 --- 

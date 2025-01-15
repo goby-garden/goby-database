@@ -1,4 +1,4 @@
-export type SQLTableType = 'class' | 'system' | 'junction' | 'workspace';
+export type SQLTableType = 'system' | 'class' | 'properties' | 'junction' | 'workspace';
 
 export type SQLClassListRow = {
     id: number;
@@ -12,19 +12,25 @@ export type SQLJunctonListRow = {
     metadata: string; // JSON string
   };
 
-export type RelationTargetBase = {
+export type RelationshipSideBase = {
   class_id?:number;
   prop_id?:number;
   class_name?:string;
   prop_name?:string;
 }
 
-export type RelationTarget = RelationTargetBase & {
+export type RelationshipSide = RelationshipSideBase & {
     class_id:number;
 };
 
+export type RelationTarget = {
+  class_id:number;
+  prop_id?:number | null;
+  junction_id:number;
+}
 
-export type ItemRelationSide = RelationTarget & {
+
+export type ItemRelationSide = RelationshipSide & {
   item_id:number;
 }
 
@@ -32,8 +38,8 @@ export type ItemRelationSide = RelationTarget & {
 type RelationCreate = {
   type:'create',
   sides:[
-    RelationTargetBase,
-    RelationTargetBase
+    RelationshipSideBase,
+    RelationshipSideBase
   ]
 }
 
@@ -46,13 +52,13 @@ type RelationTransfer = {
   type:'transfer',
   id:number,
   sides:[
-    RelationTarget,
-    RelationTarget
+    RelationshipSide,
+    RelationshipSide
   ],
   // ; to allow conversion from two-way to one-way relation (and one way to two-way?)
   new_sides:[
-    RelationTargetBase,
-    RelationTargetBase
+    RelationshipSideBase,
+    RelationshipSideBase
   ]
 }
 
@@ -106,9 +112,6 @@ type ClassModify = {
 export type ClassEdit = ClassCreate | ClassDelete | ClassModify;
 
 export type ClassMetadata ={
-  // NOTE: planning to move these outside of metadata into their own table in the future
-  properties:Property[],
-  used_prop_ids:number[],
   style:{
     color?:string
   }
@@ -158,14 +161,15 @@ export type ClassData ={
   id:number;
   name:string;
   metadata:ClassMetadata;
-  items:ClassRow[]
+  items:ClassRow[];
+  properties:Property[];
 };
 
 export type ClassList =ClassData[];
 
 
 
-export type JunctionSides =[RelationTarget,RelationTarget];
+export type JunctionSides =[RelationshipSide,RelationshipSide];
 
 export type JunctionTable ={
   id:number,
@@ -175,32 +179,6 @@ export type JunctionTable ={
 
 
 export type JunctionList =JunctionTable[];
-
-// making a distinction for staging, i.e. junction tables which may or may not have yet been created.
-
-
-export type BaseCreateAction = { 
-  action:'create';
-  class_id?:number;
-  prop_id?:number;
-  class_name?:string;
-};
-
-export type CreatePropertyAction = BaseCreateAction & {prop_name:string} & PropertyDefinition;
-
-export type CreateAction = BaseCreateAction | CreatePropertyAction;
-
-export type DeleteAction = { action:'delete' } & ({
-  subject:'property';
-  prop_id:number;
-  class_id:number;
-} | {
-  subject:'class';
-  class_id:number;
-  prop_id:never;
-});
-
-export type Action = CreateAction | DeleteAction;
 
 
 export type SQLApplicationWindow ={

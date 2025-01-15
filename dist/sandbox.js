@@ -62,7 +62,7 @@ project.action_make_relation({
     class_id: 2,
     item_id: 2
 });
-project.refresh_class_cache();
-project.refresh_junction_cache();
+// project.refresh_class_cache();
+project.refresh_caches(['classlist', 'items', 'junctions']);
 console.log('project.class_cache[0]', project.class_cache[0].items);
 //# sourceMappingURL=sandbox.js.map

@@ -1,4 +1,4 @@
-import { JunctionSides, RelationTarget,MaxValues } from "./types";
+import { JunctionSides, RelationshipSide,MaxValues } from "./types";
 
 
 export function defined<T>(v:T):v is NonNullable<T>{
@@ -36,7 +36,7 @@ export function partial_relation_match(old_relation:JunctionSides,new_relation:J
             let match_b_old=old_relation[opposite_index];;
             
             // should return true if the properties match on at least one side
-            if(properties_match(match_a_new,match_a_old) || properties_match(match_b_new,match_b_old)){
+            if(properties_exist_and_match(match_a_new,match_a_old) || properties_exist_and_match(match_b_new,match_b_old)){
                 return true;
             }
         }
@@ -48,14 +48,18 @@ export function partial_relation_match(old_relation:JunctionSides,new_relation:J
 
  }
 
- function properties_match(a:RelationTarget,b:RelationTarget){
+ function properties_exist_and_match(a:RelationshipSide,b:RelationshipSide){
+    return defined(a.prop_id) && defined(b.prop_id) && a.prop_id == b.prop_id;
+}
+
+function properties_match(a:RelationshipSide,b:RelationshipSide){
     if(!defined(a.prop_id) && !defined(b.prop_id)) return true;
     else return a.prop_id == b.prop_id;
 
     // return defined(a.prop_id) && defined(b.prop_id) && a.prop_id == b.prop_id;
 }
 
- function side_match(x:RelationTarget,y:RelationTarget){
+ function side_match(x:RelationshipSide,y:RelationshipSide){
     return x.class_id==y.class_id&&properties_match(x,y);
  };
 
