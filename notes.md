@@ -367,16 +367,16 @@ _*occasionally outdated/bypassed_
 1/13/2025
 
 Current to-do:
-- [ ] refactor junctions so that:
+- [x] refactor junctions so that:
     - in the junction list, the following are normalized: side_a_class_id, side_a_prop_id, side_b_class_id, side_b_prop_id
         - should be retrieved as a JunctionSides json array
-    - in individual junctions, the columns are just side_a and side_b
-- [ ] implement junction transfer 
-- [ ] refactor properties so they exist in their own tables, created when classes are created
+    - in individual junctions, the columns should be a little more descriptive, e.g. class_2_property_5 or class_3
+- [ ] refactor properties so they exist in their own tables, and are created when classes are created
 - [ ] refactor class/junction retrieval and caching
     - reflect above changes 
     - separate retrieval of items, properties, and relations
-    - get relation targets from junction list rather than storing them on the property (DRY)
+    - [x] get relation targets from junction list rather than storing them on the property (DRY)
+- [ ] implement junction transfer 
 --- 
 
 Currently working through revising the edit schema function. The class and prop edit loops were simple enough but the relationship edits introduce some complexity:

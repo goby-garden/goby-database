@@ -1,19 +1,17 @@
 import type { Database as DatabaseType, Statement } from 'better-sqlite3';
-import type { SQLTableType, SQLClassListRow, SQLJunctonListRow, JunctionSides, RelationTargetBase, RelationTarget, JunctionList, ClassList, ClassMetadata, Property, DataType, ItemRelationSide, Action, SQLApplicationWindow, ApplicationWindow, WorkspaceBlock, ClassData, ClassRow, ClassEdit, RelationEdit, PropertyEdit } from './types.js';
+import type { SQLTableType, SQLClassListRow, SQLJunctonListRow, JunctionSides, JunctionList, ClassList, ClassMetadata, Property, DataType, ItemRelationSide, SQLApplicationWindow, ApplicationWindow, WorkspaceBlock, ClassData, ClassRow, ClassEdit, RelationEdit, PropertyEdit, MaxValues } from './types.js';
 export default class Project {
     db: DatabaseType;
     run: {
         [key: string]: Statement;
         get_all_classes: Statement<[], SQLClassListRow>;
         get_junctionlist: Statement<[], SQLJunctonListRow>;
-        match_junction: Statement<{
-            input_1: string;
-            input_2: string;
+        get_junctions_matching_property: Statement<{
+            class_id: number;
+            prop_id: number | null;
         }, {
             id: number;
-            side_a: string;
-            side_b: string;
-            metadata: string;
+            sides: string;
         }>;
         get_windows: Statement<[], SQLApplicationWindow>;
         get_class_id: Statement<[string], {
@@ -33,38 +31,22 @@ export default class Project {
         class_id: number;
         name: string;
         data_type: DataType;
-        max_values: number;
+        max_values: MaxValues;
     }): void;
-    action_add_relation_property(class_id: number, name: string, max_values: number): number;
+    action_add_relation_property(class_id: number, name: string, max_values: MaxValues): number;
     delete_property(class_id: number, prop_id: number): void;
     get_junctions(): {
         sides: JunctionSides;
         id: number;
         metadata: string;
     }[];
-    action_edit_class_schema_revised({ class_edits, property_edits, relationship_edits }: {
-        class_edits: ClassEdit[];
-        property_edits: PropertyEdit[];
-        relationship_edits: RelationEdit[];
-    }): void;
-    action_edit_class_schema(edits: {
-        staged_junctions?: {
-            id?: number;
-            sides: [RelationTargetBase, RelationTargetBase];
-            metadata?: {};
-        }[];
-        class_changes?: Action[];
+    action_edit_class_schema({ class_edits, property_edits, relationship_edits }: {
+        class_edits?: ClassEdit[];
+        property_edits?: PropertyEdit[];
+        relationship_edits?: RelationEdit[];
     }): void;
     action_delete_class(class_id: number): void;
-    action_update_relations(junction_list: {
-        id?: number;
-        sides: [RelationTarget, RelationTarget];
-        metadata?: {};
-    }[]): void;
-    create_junction_table(sides: {
-        input_1: string;
-        input_2: string;
-    }): number;
+    create_junction_table(sides: JunctionSides): number;
     transfer_connections(source: {
         side_a: string;
         side_b: string;

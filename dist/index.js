@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { defined } from './utils.js';
+import { defined, partial_relation_match, full_relation_match, can_have_multiple_values, junction_col_name } from './utils.js';
 const text_data_types = ['string', 'resource'];
 const real_data_types = ['number'];
 export default class Project {
@@ -16,40 +16,39 @@ export default class Project {
         else {
             console.log('opened goby database');
         }
-        this.db.function('junction_obj', (side_a, side_b) => {
-            let json_string = '';
-            if (typeof side_a == 'string' && typeof side_b == 'string') {
-                let split_1 = side_a.split('.');
-                let split_2 = side_b.split('.');
-                let c1 = `"class_id":${split_1[0]}`;
-                let p1 = split_1[1] ? `,"prop_id":${split_1[1]}` : '';
-                let c2 = `"class_id":${split_2[0]}`;
-                let p2 = split_2[1] ? `,"prop_id":${split_2[1]}` : '';
-                json_string = `[ {${c1}${p1}}, {${c2}${p2}} ]`;
-            }
-            else {
-                json_string = `[]`;
-            }
-            // possibly validate output with template literals in the future
-            // https://stackoverflow.com/questions/57017145/is-it-possible-to-assign-a-partial-wildcard-to-a-type-in-typescript
-            return json_string;
-        });
         //prepared statements with arguments so my code isn't as verbose elsewhere
         this.run = {
             begin: this.db.prepare('BEGIN IMMEDIATE'),
             commit: this.db.prepare('COMMIT'),
             rollback: this.db.prepare('ROLLBACK'),
             create_item: this.db.prepare('INSERT INTO system_root(type,value) VALUES (@type, @value)'),
-            get_junctionlist: this.db.prepare('SELECT id, junction_obj(side_a, side_b) AS sides, metadata FROM system_junctionlist'),
+            get_junctionlist: this.db.prepare(`
+                SELECT 
+                id, 
+                json_array( 
+                    json_object('class_id',side_0_class_id,'prop_id',side_0_prop_id), 
+                    json_object('class_id',side_1_class_id,'prop_id',side_1_prop_id)
+                ) AS sides, 
+                metadata FROM system_junctionlist`),
+            get_junctions_matching_property: this.db.prepare(`
+                SELECT 
+                    id, 
+                    json_array( 
+                        json_object('class_id',side_0_class_id,'prop_id',side_0_prop_id), 
+                        json_object('class_id',side_1_class_id,'prop_id',side_1_prop_id)
+                    ) AS sides, 
+                    metadata 
+                FROM system_junctionlist 
+                WHERE (side_0_class_id = @class_id AND side_0_prop_id = @prop_id)
+                OR (side_1_class_id = @class_id AND side_1_prop_id = @prop_id)
+            `),
             get_class: this.db.prepare(`SELECT name, metadata FROM system_classlist WHERE id = ?`),
             get_class_id: this.db.prepare(`SELECT id FROM system_classlist WHERE name = ?`),
             get_all_classes: this.db.prepare(`SELECT id, name, metadata FROM system_classlist`),
             save_class_meta: this.db.prepare(`UPDATE system_classlist set metadata = ? WHERE id = ?`),
             update_window: this.db.prepare(`UPDATE system_windows set open = @open, type=@type, metadata = @meta WHERE id = @id`),
             create_window: this.db.prepare(`INSERT INTO system_windows (type,open, metadata) VALUES (@type, @open, @meta)`),
-            get_windows: this.db.prepare(`SELECT id, type, open, metadata FROM system_windows`),
-            match_junction: this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a = @input_1 AND side_b = @input_2 ) OR ( side_a = @input_2 AND side_b = @input_1 )`),
-            fuzzy_match_junction: this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a LIKE @input_1 AND side_b LIKE @input_2 ) OR ( side_a LIKE @input_2 AND side_b LIKE @input_1 )`)
+            get_windows: this.db.prepare(`SELECT id, type, open, metadata FROM system_windows`)
         };
         this.class_cache = [];
         this.refresh_class_cache();
@@ -77,7 +76,14 @@ export default class Project {
         //System table to contain metadata for all classes created by user
         this.create_table('system', 'classlist', ['id INTEGER NOT NULL PRIMARY KEY', 'name TEXT', 'metadata TEXT']);
         //System table to contain all the junction tables and aggregate info about relations
-        this.create_table('system', 'junctionlist', ['id INTEGER NOT NULL PRIMARY KEY', 'side_a TEXT', 'side_b TEXT', 'metadata TEXT']);
+        this.create_table('system', 'junctionlist', [
+            'id INTEGER NOT NULL PRIMARY KEY',
+            'side_0_class_id INTEGER NOT NULL',
+            'side_0_prop_id INTEGER',
+            'side_1_class_id INTEGER NOT NULL',
+            'side_1_prop_id INTEGER',
+            'metadata TEXT'
+        ]);
         //System table to contain generated image data
         this.create_table('system', 'images', ['file_path TEXT', 'img_type TEXT', 'img BLOB']);
         // window "open" is a boolean stored as 0 or 1
@@ -174,7 +180,7 @@ export default class Project {
         class_meta.properties.push(prop_meta);
         // ------------------------------
         let sql_data_type = '';
-        if (max_values > 1 || text_data_types.includes(data_type)) {
+        if (can_have_multiple_values(max_values) || text_data_types.includes(data_type)) {
             //multiple for data means a stringified array no matter what it is
             sql_data_type = 'TEXT';
         }
@@ -236,7 +242,7 @@ export default class Project {
         });
         return junction_list_parsed;
     }
-    action_edit_class_schema_revised({ class_edits, property_edits, relationship_edits }) {
+    action_edit_class_schema({ class_edits = [], property_edits = [], relationship_edits = [] }) {
         var _a, _b, _c;
         // get the list of existing relationships
         let existing_junctions = this.get_junctions();
@@ -330,7 +336,7 @@ export default class Project {
                     }
                     break;
                 case 'delete':
-                    let prop = (_c = (_b = (_a = this.class_cache.find(a => a.id == prop_edit.class_id)) === null || _a === void 0 ? void 0 : _a.metadata) === null || _b === void 0 ? void 0 : _b.properties) === null || _c === void 0 ? void 0 : _c.find((a) => a.id == prop_edit.prop_id);
+                    const prop = (_c = (_b = (_a = this.class_cache.find(a => a.id == prop_edit.class_id)) === null || _a === void 0 ? void 0 : _a.metadata) === null || _b === void 0 ? void 0 : _b.properties) === null || _c === void 0 ? void 0 : _c.find((a) => a.id == prop_edit.prop_id);
                     if (prop && prop.type == 'relation') {
                         // queue the deletion or transfer of relations involving this prop
                         for (let junction of existing_junctions) {
@@ -374,257 +380,111 @@ export default class Project {
                     break;
             }
         }
-        // possibly what I could also do in advance of this loop is verify if any of the changes described here qualify for transfer, based on the current junction list, and convert it to a transfer
-        // e.g. a two-way relation is being created where a one-way relation already existed; that’s an opportunity to transfer.
-        // 1. create a new consolidated edits array
-        // 2. add the type:"transfer" relations to the array
-        const consolidated_relationship_edits = relationship_edits.filter(r => r.type == 'transfer');
-        // 3. loop through type:"create" relations
-        for (let create of relationship_edits.filter(r => r.type == 'create')) {
-            // check if there’s an existing relation that matches both classes and one property
-            let existing = existing_junctions.find((r) => {
-            });
+        // 1. first create an array to consolidate the edits
+        const consolidated_relationship_edits = [];
+        let valid_sides = (sides) => {
+            return defined(sides[0].class_id) && defined(sides[1].class_id);
+        };
+        const relation_order = { transfer: 1, create: 2, delete: 3 };
+        for (let relationship_edit of relationship_edits.sort((a, b) => relation_order[a.type] - relation_order[b.type])) {
+            switch (relationship_edit.type) {
+                // all of these are added before anything else
+                case 'transfer':
+                    consolidated_relationship_edits.push(relationship_edit);
+                    break;
+                // these are processed after the transfers but before the deletes.
+                case 'create':
+                    let new_sides = relationship_edit.sides;
+                    if (valid_sides(new_sides)) {
+                        // check if there’s an existing relation that matches both classes and one property
+                        let existing = existing_junctions.find((r) => {
+                            return partial_relation_match(new_sides, r.sides);
+                        });
+                        // if there is an existing match
+                        if (existing) {
+                            // look for a type:"delete" which deletes this relation
+                            let delete_queued = relationship_edits.find(a => a.type == 'delete' && a.id == existing.id);
+                            if (delete_queued) {
+                                // if there’s a delete, push a transfer instead
+                                consolidated_relationship_edits.push({
+                                    type: 'transfer',
+                                    id: existing.id,
+                                    sides: existing.sides,
+                                    new_sides: new_sides
+                                });
+                            }
+                            // if there’s not a delete, we ignore this edit because it’s invalid
+                        }
+                        else {
+                            // if it does not exist, add the type:"create" normally
+                            consolidated_relationship_edits.push(relationship_edit);
+                        }
+                    }
+                    break;
+                // these are processed last, after the creates and transfers.
+                case 'delete':
+                    // check if there’s already a transfer for it in the consolidated array
+                    let transfer_queued = consolidated_relationship_edits.some(a => a.type == 'transfer' && a.id == relationship_edit.id);
+                    // ignore if so, add it if not.
+                    if (!transfer_queued)
+                        consolidated_relationship_edits.push(relationship_edit);
+                    break;
+            }
         }
-        //         - if it exists:
-        //             - look for a type:"delete" which deletes this relation
-        //                 - if there’s a delete, push a transfer
-        //                 - if there’s not a delete, ignore this creation because it’s invalid
-        //         - if it does not exist
-        //             - add the type:"create" normally
-        // 4. loop through the type:"delete" relations
-        //     - check if there’s already a transfer for it in the consolidated array, and ignore if so
-        // 5. loop through the consolidated edits array and apply the changes
-        for (let relationship_edit of relationship_edits) {
+        for (let relationship_edit of consolidated_relationship_edits) {
             switch (relationship_edit.type) {
                 case 'create':
                     // create the corresponding junction table _and_ record the targets in the property definitions
+                    let new_sides = relationship_edit.sides;
+                    if (valid_sides(new_sides)) {
+                        const junction_id = this.create_junction_table(new_sides);
+                        // TBD on recording the targets
+                    }
                     break;
                 case 'delete':
+                    this.delete_junction_table(relationship_edit.id);
                     // delete the corresponding junction table and remove target references in the property definitions
                     break;
                 case 'transfer':
+                    // NOTE: waiting on junction refactor to implement this
                     // creates a new junction table and deletes an old one, but transfers the old to the new
                     // ++ the steps above
                     break;
             }
         }
-    }
-    action_edit_class_schema(edits) {
-        // class_changes=[],new_junction_list
-        let class_changes = edits.class_changes || [];
-        let staged_junctions = edits.staged_junctions;
-        // really these just cover class and property add/drop right now. I could possibly add an edit existing option, not sure if the right place to do edits to relation_targets is here or in the update_relations fn.
-        for (let change of class_changes) {
-            // creates a class, property, or both, inferring based on the information is provided.
-            if (change.action == 'create') {
-                // create a class if there’s no ID set, and a name to register
-                if (!change.class_id && change.class_name) {
-                    // create class
-                    change.class_id = this.action_create_class(change.class_name);
-                    // if there are new relationships involving this new class,
-                    // set the class_id you just created
-                    if (staged_junctions && change.class_id !== undefined) {
-                        staged_junctions.map(junction => {
-                            let matching = junction.sides.find(side => side.class_name == change.class_name);
-                            if (matching)
-                                matching.class_id = change.class_id; // needs "as number" bc of ts scoping I guess?
-                        });
-                    }
-                }
-                // if there’s a prop_name listed, we know that needs to be created
-                if ("prop_name" in change && change.class_id !== undefined) {
-                    if (change.type == 'relation') {
-                        // register the property
-                        change.prop_id = this.action_add_relation_property(change.class_id, change.prop_name, change.max_values);
-                        // same as class find any relationships in the junction list that involve this new property
-                        // and set the ID accordingly
-                        if (staged_junctions) {
-                            staged_junctions.map(junction => {
-                                let matching = junction.sides.find(side => side.class_id == change.class_id && side.prop_name == change.prop_name);
-                                if (matching)
-                                    matching.prop_id = change.prop_id;
-                            });
-                        }
-                    }
-                    else if (change.type == 'data') {
-                        this.action_add_data_property({
-                            class_id: change.class_id,
-                            name: change.prop_name,
-                            data_type: change.data_type,
-                            max_values: change.max_values
-                        });
-                    }
-                }
-            }
-            else if (change.action == 'delete') {
-                if (change.subject == 'property') {
-                    this.delete_property(change.class_id, change.prop_id);
-                }
-                else if (change.subject == 'class') {
-                    this.action_delete_class(change.class_id);
-                }
-                // I need to be able to resolve relations that involve the deleted classes and properties, i.e.
-                // - remove them as targets from other relation properties
-                // - delete any junction tables in which they participate
-                // maybe it's worthwhile and safe to just check the junction list for any relations that include this property or class, and remove them/convert them if necessary?
-            }
-        }
-        if (staged_junctions !== undefined) {
-            // type guard to make sure each side has at least a class_id defined
-            let validSides = (junction) => {
-                let j = junction;
-                return j.sides[0].class_id !== undefined && j.sides[1].class_id !== undefined;
-            };
-            // using type guard to filter out discrepancies
-            let staged_junctions_with_valid_sides = staged_junctions.filter(junction => validSides(junction));
-            // (if this actually filtered something out, then something weird is going on)
-            if (staged_junctions.length !== staged_junctions_with_valid_sides.length)
-                throw Error("There are junctions with no corresponding class; something in the inputted schema is invalid.");
-            this.action_update_relations(staged_junctions_with_valid_sides);
-        }
-        //in the middle of adding update_relations to this generalized funciton
+        this.refresh_class_cache();
+        this.refresh_junction_cache();
     }
     action_delete_class(class_id) {
         // TBD
         console.log('TBD, class deletion not yet implemented');
     }
-    action_update_relations(junction_list) {
-        let classes_meta = this.class_cache;
-        // STEP 1 ============================
-        // find all the old junctions which don't appear in the new list
-        // add them to a "delete_queue" to schedule them for deletion
-        // remove the corresponding targets from the properties they reference
-        let modified_classes = [];
-        let delete_queue = [];
-        let old_junction_list = this.get_junctions();
-        for (let junction of old_junction_list) {
-            let s1 = junction.sides[0];
-            let s2 = junction.sides[1];
-            let matching = junction_list.find(a => junction_match(a.sides, junction.sides));
-            if (matching == undefined) {
-                if (s1.prop_id)
-                    remove_target(s1, s2);
-                if (s2.prop_id)
-                    remove_target(s2, s1);
-                delete_queue.push(junction);
-            }
-            //delete queue junctions will need to have the targets removed (or left be, if the prop target doesn't match) from their respective props
-        }
-        // STEP 2 ============================
-        // a) find all the junctions in the new list that don't appear in the old one
-        // b) this means they need to be newly created
-        // c) the corresponding targets need to be registered in any referenced properties
-        // d) we check if there are any former tables which share at least one of the same properties, and we transfer their properties
-        for (let junction of junction_list) {
-            let s1 = junction.sides[0];
-            let s2 = junction.sides[1];
-            // a)
-            let matching = old_junction_list.find(a => junction_match(a.sides, junction.sides));
-            if (matching == undefined) {
-                // b)
-                // create the new table
-                let j_sides = {
-                    input_1: `${s1.class_id}.${s1.prop_id || ''}`,
-                    input_2: `${s2.class_id}.${s2.prop_id || ''}`
-                };
-                let junction_id = this.create_junction_table(j_sides);
-                // c)
-                if (s1.prop_id)
-                    add_target(s1, s2, junction_id);
-                if (s2.prop_id)
-                    add_target(s2, s1, junction_id);
-                let j_object = {
-                    side_a: j_sides.input_1,
-                    side_b: j_sides.input_2,
-                    id: junction_id
-                };
-                // d)
-                // look for any tables in the delete pile that pair the same classes and have the same property on one side. If any exist, transfer the connections from the old tables
-                let partial_matches = delete_queue.filter(a => partial_junction_match(a.sides, junction.sides));
-                for (let partial of partial_matches) {
-                    let p_object = {
-                        id: partial.id,
-                        side_a: `${partial.sides[0].class_id}.${partial.sides[0].prop_id || ''}`,
-                        side_b: `${partial.sides[1].class_id}.${partial.sides[1].prop_id || ''}`
-                    };
-                    this.transfer_connections(p_object, j_object);
-                }
-            }
-        }
-        // STEP 3 ============================ 
-        // delete the tables in the delete pile
-        for (let junction of delete_queue) {
-            this.delete_junction_table(junction.id);
-        }
-        // STEP 4 ============================ 
-        // submit all prop updates to class_meta
-        // NOTE: in the future this should write back to the property table instead of modifying classes?
-        for (let modified of modified_classes)
-            this.run.save_class_meta.run(JSON.stringify(modified.metadata), modified.id);
-        this.refresh_class_cache();
-        // STEP 5 (TBD) ===================
-        // check if the connections in the new tables follow the conditons of their corresponding properties, and remove any that don't pass muster
-        // ======================== utility functions ============================
-        function side_match(x, y) {
-            return x.class_id == y.class_id && x.prop_id == y.prop_id;
-        }
-        ;
-        function junction_match(a, b) {
-            // match sides completely, order doesn't matter
-            return (side_match(a[0], b[0]) && side_match(a[1], b[1])) ||
-                (side_match(a[0], b[1]) && side_match(a[1], b[0]));
-        }
-        function partial_junction_match(a, b) {
-            // match both classes
-            // match at least one prop
-            let a0_match_i = b.findIndex(side => a[0].class_id == side.class_id);
-            let a1_match_i = b.findIndex(side => a[1].class_id == side.class_id);
-            if (a0_match_i >= 0 && a1_match_i >= 0 && a0_match_i !== a1_match_i) {
-                return b[a0_match_i].prop_id == a[0].prop_id ||
-                    b[a1_match_i].prop_id == a[1].prop_id;
-            }
-            else {
-                return false;
-            }
-        }
-        function remove_target(prop, target) {
-            let prop_class = classes_meta[prop.class_id];
-            let class_meta = prop_class.metadata;
-            let prop_meta = class_meta.properties.find(a => a.id == prop.prop_id);
-            if (prop_meta && prop_meta.type == 'relation') {
-                let target_index = prop_meta.relation_targets.findIndex(a => side_match(a, target));
-                if (target_index >= 0)
-                    prop_meta.relation_targets.splice(target_index, 1);
-                if (!modified_classes.find((c) => c.id == prop_class.id))
-                    modified_classes.push(prop_class);
-            }
-        }
-        function add_target(prop, target, junction_id) {
-            let prop_class = classes_meta[prop.class_id];
-            let class_meta = prop_class.metadata;
-            let prop_meta = class_meta.properties.find(a => a.id == prop.prop_id);
-            if (prop_meta && prop_meta.type == 'relation') {
-                prop_meta.relation_targets.push(target);
-                // NOTE: same as above, there’s a better way to handle without mutating
-                if (!modified_classes.find((c) => c.id == prop_class.id))
-                    modified_classes.push(prop_class);
-            }
-        }
-    }
     create_junction_table(sides) {
         // NOTE: in the future I think I'm inclined to store sides as JSON, i.e. {class_id:2,prop_id:1} - slightly more verbose, but a lot more readable and less weird and arbitrary (lol why did I do it in this syntax...)
         // UPDATE: I think I used this syntax because I need a way to refer to it in junction table column names. but there must be a better way... maybe the column names can always be "side a" and "side b" with the actual props encoded in theh junction list. that seems right.
         var _a;
+        // let str1=`${sides[0].class_id}.${sides[0].prop_id || ''}`;
+        // let str2=`${sides[1].class_id}.${sides[1].prop_id || ''}`;
         // adds new record to junction table
-        this.db.prepare(`INSERT INTO system_junctionlist (side_a, side_b) VALUES ('${sides.input_1}','${sides.input_2}')`).run();
+        this.db.prepare(`
+            INSERT INTO system_junctionlist 
+            (side_0_class_id, side_0_prop_id, side_1_class_id, side_1_prop_id) 
+            VALUES (@side_0_class_id,@side_0_prop_id,@side_1_class_id,@side_1_prop_id)
+            `).run({
+            side_0_class_id: sides[0].class_id,
+            side_0_prop_id: sides[0].prop_id || null,
+            side_1_class_id: sides[1].class_id,
+            side_1_prop_id: sides[1].prop_id || null
+        });
         //gets id of new record
         let id = (_a = this.db.prepare('SELECT id FROM system_junctionlist ORDER BY id DESC').get()) === null || _a === void 0 ? void 0 : _a.id;
+        // console.log('create new junction table',this.db.prepare<[],{id:number}>('SELECT id FROM system_junctionlist ORDER BY id DESC').get())
         if (typeof id !== 'number')
             throw new Error('Something went wrong creating a new relationship');
         // creates table
         this.create_table('junction', id, [
-            `"${sides.input_1}" INTEGER`,
-            `"${sides.input_2}" INTEGER`
+            `"${junction_col_name(sides[0].class_id, sides[0].prop_id)}" INTEGER`,
+            `"${junction_col_name(sides[1].class_id, sides[1].prop_id)}" INTEGER`
         ]);
         return id;
     }
@@ -716,16 +576,24 @@ export default class Project {
         */
         var _a;
         // NOTE this will all need to change if I convert the junction syntax to JSON --------
-        let sides = {
-            input_1: `${input_1.class_id}.${input_1.prop_id || ''}`,
-            input_2: `${input_2.class_id}.${input_2.prop_id || ''}`
+        let column_names = {
+            input_1: junction_col_name(input_1.class_id, input_1.prop_id),
+            input_2: junction_col_name(input_2.class_id, input_2.prop_id)
         };
-        let junction_id = (_a = this.run.match_junction.get(sides)) === null || _a === void 0 ? void 0 : _a.id;
-        this.db.prepare(`INSERT INTO junction_${junction_id} ("${sides.input_1}", "${sides.input_2}") VALUES (${input_1.item_id},${input_2.item_id})`).run();
+        let junction_id = (_a = this.junction_cache.find(j => full_relation_match(j.sides, [input_1, input_2]))) === null || _a === void 0 ? void 0 : _a.id;
+        if (junction_id) {
+            this.db.prepare(`
+                INSERT INTO junction_${junction_id} 
+                ("${column_names.input_1}", "${column_names.input_2}") 
+                VALUES (${input_1.item_id},${input_2.item_id})
+            `).run();
+        }
+        else {
+            throw Error('Something went wrong - junction table for relationship not found');
+        }
         // -------------------
     }
     retrieve_class({ class_id, class_name, class_meta }) {
-        var _a;
         if (class_name == undefined || class_meta == undefined) {
             let class_data = this.class_cache.find(a => a.id == class_id);
             if (class_data == undefined)
@@ -742,45 +610,60 @@ export default class Project {
         // //joined+added between SELECT and FROM, built from relations
         const relation_selections = [];
         let relation_properties = class_meta.properties.filter(a => a.type == 'relation');
-        console.log('class_meta.properties', class_meta.properties, 'relation_properties', relation_properties);
+        // console.log('class_meta.properties',class_meta.properties,'relation_properties',relation_properties)
         for (let prop of relation_properties) {
             const target_selects = [];
-            let p_side = `${class_id}.${prop.id}`;
-            // let first=prop.relation_targets[0];
-            for (let i = 0; i < prop.relation_targets.length; i++) {
-                let target = prop.relation_targets[i];
-                console.log('target added', target);
-                let t_side = `${target.class_id}.${target.prop_id || ''}`;
-                let junction_id = (_a = this.run.match_junction.get({
-                    input_1: p_side,
-                    input_2: t_side
-                })) === null || _a === void 0 ? void 0 : _a.id;
-                if (junction_id == undefined)
-                    throw new Error(`Could not find relation data associated with ${class_name}.${prop.name}`);
-                let target_select = `SELECT "${p_side}", json_object('target_id','${target.class_id}','id',"${t_side}") AS json_object
-                FROM junction_${junction_id}`;
-                target_selects.push(target_select);
+            let property_junction_column_name = junction_col_name(class_id, prop.id);
+            let associated_junctions = this.run.get_junctions_matching_property.all({ class_id, prop_id: prop.id }) || [];
+            if (associated_junctions.length > 0) {
+                for (let i = 0; i < associated_junctions.length; i++) {
+                    let relation = associated_junctions[i];
+                    let sides = JSON.parse(relation.sides);
+                    console.log('sides', sides);
+                    // find the side that does not match both the class and prop IDs
+                    let target = sides.find(a => !(a.class_id == class_id && a.prop_id == prop.id));
+                    if (target) {
+                        let target_junction_column_name = junction_col_name(target.class_id, target.prop_id);
+                        let junction_id = relation.id;
+                        let target_select = `SELECT "${property_junction_column_name}", json_object('class_id',${target.class_id},'id',"${target_junction_column_name}") AS target_data FROM junction_${junction_id}`;
+                        target_selects.push(target_select);
+                    }
+                    else {
+                        throw Error('Something went wrong trying to retrieve relationship data');
+                    }
+                }
+                // uses built-in aggregate json function instead of group_concat craziness
+                const cte = `[${prop.id}_cte] AS (
+                    SELECT "${property_junction_column_name}", json_group_array( json(target_data) ) AS [user_${prop.name}]
+                    FROM 
+                    (
+                        ${target_selects.join(` 
+                        UNION 
+                        `)}
+                    )
+                    GROUP BY "${property_junction_column_name}"
+                )`;
+                cte_strings.push(cte);
+                relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
+                cte_joins.push(`LEFT JOIN [${prop.id}_cte] ON [${prop.id}_cte]."${property_junction_column_name}" = ${class_string}.system_id`);
             }
-            const cte = `[${prop.id}_cte] AS (
-                SELECT "${p_side}", ('[' || GROUP_CONCAT(json_object,',') || ']') AS [user_${prop.name}]
-                FROM (${target_selects.join(' UNION ')})
-                GROUP BY "${p_side}"
-            )`;
-            cte_strings.push(cte);
-            relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
-            cte_joins.push(`LEFT JOIN [${prop.id}_cte] ON [${prop.id}_cte]."${p_side}" = ${class_string}.system_id`);
+            else {
+                relation_selections.push(`'[]' AS [user_${prop.name}]`);
+            }
         }
         let orderby = `ORDER BY ${class_string}.system_order`;
+        let comma_break = `,
+            `;
         let query = `
-            ${cte_strings.length > 0 ? "WITH " + cte_strings.join(',') : ''}
-            SELECT [class_${class_name}].* ${cte_strings.length > 0 ? ', ' + relation_selections.join(`, `) : ''}
+            ${cte_strings.length > 0 ? "WITH " + cte_strings.join(comma_break) : ''}
+            SELECT [class_${class_name}].* ${relation_selections.length > 0 ? ', ' + relation_selections.join(`, `) : ''}
             FROM [class_${class_name}]
             ${cte_joins.join(' ')}
             ${orderby}`;
-        console.log('query:\n', query);
+        console.log('query', query);
         // possibly elaborate this any type a little more in the future, e.g. a CellValue or SQLCellValue type that expects some wildcards
         let items = this.db.prepare(query).all();
-        let stringified_properties = class_meta.properties.filter(a => a.type == 'relation' || a.max_values > 1);
+        let stringified_properties = class_meta.properties.filter(a => a.type == 'relation' || can_have_multiple_values(a.max_values));
         items.map((row) => {
             if (row && typeof row == 'object') {
                 for (let prop of stringified_properties) {

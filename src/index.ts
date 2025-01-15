@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import {defined,partial_relation_match} from './utils.js';
+import {defined,partial_relation_match,full_relation_match,can_have_multiple_values,junction_col_name} from './utils.js';
 import type { Database as DatabaseType, Statement } from 'better-sqlite3';
 import type {
     SQLTableType,
@@ -23,7 +23,8 @@ import type {
     ClassRow,
     ClassEdit,
     RelationEdit,
-    PropertyEdit
+    PropertyEdit,
+    MaxValues,
 } from './types.js';
 
 const text_data_types=['string','resource'];
@@ -36,7 +37,7 @@ export default class Project{
         [key:string]:Statement;
         get_all_classes:Statement<[],SQLClassListRow>;
         get_junctionlist:Statement<[],SQLJunctonListRow>;
-        match_junction:Statement<{input_1:string,input_2:string},{id:number,side_a:string, side_b:string, metadata:string}>;
+        get_junctions_matching_property:Statement<{class_id:number,prop_id:number | null},{id:number,sides:string}>;
         get_windows:Statement<[],SQLApplicationWindow>;
         get_class_id:Statement<[string],{id:number}>;
     };
@@ -57,42 +58,40 @@ export default class Project{
         }else{
           console.log('opened goby database');
         }
-
-        this.db.function('junction_obj', (side_a, side_b) => {
-            let json_string='';
-            if(typeof side_a=='string'&&typeof side_b=='string'){
-                let split_1=side_a.split('.');
-                let split_2=side_b.split('.');
-                let c1=`"class_id":${split_1[0]}`;
-                let p1=split_1[1]?`,"prop_id":${split_1[1]}`:'';
-                let c2=`"class_id":${split_2[0]}`;
-                let p2=split_2[1]?`,"prop_id":${split_2[1]}`:'';
-                json_string=`[ {${c1}${p1}}, {${c2}${p2}} ]`;
-            }else{
-                json_string=`[]`;
-            }
-            
-            // possibly validate output with template literals in the future
-            // https://stackoverflow.com/questions/57017145/is-it-possible-to-assign-a-partial-wildcard-to-a-type-in-typescript
-            return json_string;
-        });
-
+       
         //prepared statements with arguments so my code isn't as verbose elsewhere
         this.run={
             begin:this.db.prepare('BEGIN IMMEDIATE'),
             commit:this.db.prepare('COMMIT'),
             rollback:this.db.prepare('ROLLBACK'),
             create_item:this.db.prepare('INSERT INTO system_root(type,value) VALUES (@type, @value)'),
-            get_junctionlist:this.db.prepare<[],SQLJunctonListRow>('SELECT id, junction_obj(side_a, side_b) AS sides, metadata FROM system_junctionlist'),
+            get_junctionlist:this.db.prepare<[],SQLJunctonListRow>(`
+                SELECT 
+                id, 
+                json_array( 
+                    json_object('class_id',side_0_class_id,'prop_id',side_0_prop_id), 
+                    json_object('class_id',side_1_class_id,'prop_id',side_1_prop_id)
+                ) AS sides, 
+                metadata FROM system_junctionlist`),
+            get_junctions_matching_property:this.db.prepare<{class_id:number,prop_id:number | null},{id:number,sides:string}>(`
+                SELECT 
+                    id, 
+                    json_array( 
+                        json_object('class_id',side_0_class_id,'prop_id',side_0_prop_id), 
+                        json_object('class_id',side_1_class_id,'prop_id',side_1_prop_id)
+                    ) AS sides, 
+                    metadata 
+                FROM system_junctionlist 
+                WHERE (side_0_class_id = @class_id AND side_0_prop_id = @prop_id)
+                OR (side_1_class_id = @class_id AND side_1_prop_id = @prop_id)
+            `),
             get_class:this.db.prepare(`SELECT name, metadata FROM system_classlist WHERE id = ?`),
             get_class_id:this.db.prepare<[string],{id:number}>(`SELECT id FROM system_classlist WHERE name = ?`),
             get_all_classes:this.db.prepare<[],SQLClassListRow>(`SELECT id, name, metadata FROM system_classlist`),
             save_class_meta:this.db.prepare(`UPDATE system_classlist set metadata = ? WHERE id = ?`),
             update_window:this.db.prepare(`UPDATE system_windows set open = @open, type=@type, metadata = @meta WHERE id = @id`),
             create_window: this.db.prepare(`INSERT INTO system_windows (type,open, metadata) VALUES (@type, @open, @meta)`),
-            get_windows:this.db.prepare<[],SQLApplicationWindow>(`SELECT id, type, open, metadata FROM system_windows`),
-            match_junction:this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a = @input_1 AND side_b = @input_2 ) OR ( side_a = @input_2 AND side_b = @input_1 )`),
-            fuzzy_match_junction:this.db.prepare(`SELECT id, side_a, side_b, metadata FROM system_junctionlist WHERE (side_a LIKE @input_1 AND side_b LIKE @input_2 ) OR ( side_a LIKE @input_2 AND side_b LIKE @input_1 )`)
+            get_windows:this.db.prepare<[],SQLApplicationWindow>(`SELECT id, type, open, metadata FROM system_windows`)
         }
 
         
@@ -129,7 +128,14 @@ export default class Project{
         //System table to contain metadata for all classes created by user
         this.create_table('system','classlist',['id INTEGER NOT NULL PRIMARY KEY','name TEXT','metadata TEXT']);
         //System table to contain all the junction tables and aggregate info about relations
-        this.create_table('system','junctionlist',['id INTEGER NOT NULL PRIMARY KEY','side_a TEXT','side_b TEXT','metadata TEXT']);
+        this.create_table('system','junctionlist',[
+            'id INTEGER NOT NULL PRIMARY KEY',
+            'side_0_class_id INTEGER NOT NULL',
+            'side_0_prop_id INTEGER',
+            'side_1_class_id INTEGER NOT NULL',
+            'side_1_prop_id INTEGER',
+            'metadata TEXT'
+        ]);
         //System table to contain generated image data
         this.create_table('system','images',['file_path TEXT','img_type TEXT','img BLOB']);
         
@@ -248,7 +254,7 @@ export default class Project{
         class_id:number,
         name:string,
         data_type:DataType,
-        max_values:number,
+        max_values:MaxValues,
     }){
      
         let class_data=this.class_cache.find(a=>a.id==class_id);
@@ -270,7 +276,7 @@ export default class Project{
 
         let sql_data_type='';
 
-        if(max_values>1||text_data_types.includes(data_type)){
+        if(can_have_multiple_values(max_values)||text_data_types.includes(data_type)){
             //multiple for data means a stringified array no matter what it is
             sql_data_type='TEXT';
         }else if(real_data_types.includes(data_type)){
@@ -287,7 +293,7 @@ export default class Project{
 
     }
 
-    action_add_relation_property(class_id:number,name:string,max_values:number){
+    action_add_relation_property(class_id:number,name:string,max_values:MaxValues){
         // basic property construction------------------
         let class_meta=this.class_cache.find(a=>a.id==class_id)?.metadata;
         if(class_meta == undefined) throw new Error('Cannot find class in class list.');
@@ -350,14 +356,14 @@ export default class Project{
         return junction_list_parsed;
     }
 
-    action_edit_class_schema_revised({
-        class_edits,
-        property_edits,
-        relationship_edits
+    action_edit_class_schema({
+        class_edits =[],
+        property_edits = [],
+        relationship_edits = []
     }:{
-        class_edits:ClassEdit[],
-        property_edits:PropertyEdit[],
-        relationship_edits:RelationEdit[]
+        class_edits?:ClassEdit[],
+        property_edits?:PropertyEdit[],
+        relationship_edits?:RelationEdit[]
     }){
 
         // get the list of existing relationships
@@ -601,6 +607,9 @@ export default class Project{
             }
         }
 
+        this.refresh_class_cache();
+        this.refresh_junction_cache();
+
     }
 
 
@@ -618,21 +627,31 @@ export default class Project{
         // NOTE: in the future I think I'm inclined to store sides as JSON, i.e. {class_id:2,prop_id:1} - slightly more verbose, but a lot more readable and less weird and arbitrary (lol why did I do it in this syntax...)
         // UPDATE: I think I used this syntax because I need a way to refer to it in junction table column names. but there must be a better way... maybe the column names can always be "side a" and "side b" with the actual props encoded in theh junction list. that seems right.
 
-        let str1=`${sides[0].class_id}.${sides[0].prop_id || ''}`;
-        let str2=`${sides[1].class_id}.${sides[1].prop_id || ''}`;
+        // let str1=`${sides[0].class_id}.${sides[0].prop_id || ''}`;
+        // let str2=`${sides[1].class_id}.${sides[1].prop_id || ''}`;
 
 
         // adds new record to junction table
-        this.db.prepare(`INSERT INTO system_junctionlist (side_a, side_b) VALUES ('${str1}','${str2}')`).run();
+        this.db.prepare(`
+            INSERT INTO system_junctionlist 
+            (side_0_class_id, side_0_prop_id, side_1_class_id, side_1_prop_id) 
+            VALUES (@side_0_class_id,@side_0_prop_id,@side_1_class_id,@side_1_prop_id)
+            `).run({
+                side_0_class_id:sides[0].class_id,
+                side_0_prop_id:sides[0].prop_id || null,
+                side_1_class_id:sides[1].class_id,
+                side_1_prop_id:sides[1].prop_id || null
+            });
 
         //gets id of new record
         let id=this.db.prepare<[],{id:number}>('SELECT id FROM system_junctionlist ORDER BY id DESC').get()?.id;
+        // console.log('create new junction table',this.db.prepare<[],{id:number}>('SELECT id FROM system_junctionlist ORDER BY id DESC').get())
         if(typeof id !== 'number') throw new Error('Something went wrong creating a new relationship');
 
         // creates table
         this.create_table('junction',id,[
-            `"${str1}" INTEGER`,
-            `"${str2}" INTEGER`
+            `"${junction_col_name(sides[0].class_id,sides[0].prop_id)}" INTEGER`,
+            `"${junction_col_name(sides[1].class_id,sides[1].prop_id)}" INTEGER`
         ]);
 
         return id;
@@ -744,14 +763,23 @@ export default class Project{
         */
 
         // NOTE this will all need to change if I convert the junction syntax to JSON --------
-        let sides={
-            input_1:`${input_1.class_id}.${input_1.prop_id || ''}`,
-            input_2:`${input_2.class_id}.${input_2.prop_id || ''}`
+        let column_names={
+            input_1:junction_col_name(input_1.class_id,input_1.prop_id),
+            input_2:junction_col_name(input_2.class_id,input_2.prop_id)
         }
-        let junction_id=this.run.match_junction.get(sides)?.id;
-       
+        let junction_id=this.junction_cache.find(j=>full_relation_match(j.sides,[input_1,input_2]))?.id;
 
-        this.db.prepare(`INSERT INTO junction_${junction_id} ("${sides.input_1}", "${sides.input_2}") VALUES (${input_1.item_id},${input_2.item_id})`).run();
+        if(junction_id){
+            this.db.prepare(`
+                INSERT INTO junction_${junction_id} 
+                ("${column_names.input_1}", "${column_names.input_2}") 
+                VALUES (${input_1.item_id},${input_2.item_id})
+            `).run();
+        }else{
+            throw Error('Something went wrong - junction table for relationship not found')
+        }
+
+        
         // -------------------
         
     }
@@ -777,53 +805,71 @@ export default class Project{
         const relation_selections=[];
 
         let relation_properties=class_meta.properties.filter(a=>a.type=='relation');
-        console.log('class_meta.properties',class_meta.properties,'relation_properties',relation_properties)
+        // console.log('class_meta.properties',class_meta.properties,'relation_properties',relation_properties)
 
         for (let prop of relation_properties){
             const target_selects=[];
-            let p_side=`${class_id}.${prop.id}`;
-            // let first=prop.relation_targets[0];
-            
-            for(let i = 0; i < prop.relation_targets.length; i++){
-                let target=prop.relation_targets[i];
-                console.log('target added',target);
-                let t_side=`${target.class_id}.${target.prop_id || ''}`;
-                let junction_id=this.run.match_junction.get({
-                    input_1:p_side,
-                    input_2:t_side
-                })?.id;
-                if(junction_id ==undefined) throw new Error(`Could not find relation data associated with ${class_name}.${prop.name}`);
-                let target_select=`SELECT "${p_side}", json_object('target_id','${target.class_id}','id',"${t_side}") AS json_object
-                FROM junction_${junction_id}`
-                target_selects.push(target_select);
+            let property_junction_column_name=junction_col_name(class_id,prop.id);
+  
+            let associated_junctions=this.run.get_junctions_matching_property.all({class_id,prop_id:prop.id}) || [];
+      
+            if(associated_junctions.length>0){
+                for(let i = 0; i < associated_junctions.length; i++){
+                    let relation=associated_junctions[i];
+                    let sides:JunctionSides=JSON.parse(relation.sides);
+                    console.log('sides',sides);
+                    // find the side that does not match both the class and prop IDs
+                    let target=sides.find(a=>!(a.class_id==class_id&&a.prop_id==prop.id));
+                    if(target){
+                        let target_junction_column_name=junction_col_name(target.class_id,target.prop_id);
+                        let junction_id=relation.id;
+                        let target_select=`SELECT "${property_junction_column_name}", json_object('class_id',${target.class_id},'id',"${target_junction_column_name}") AS target_data FROM junction_${junction_id}`
+                        target_selects.push(target_select);
+                    }else{
+                        throw Error('Something went wrong trying to retrieve relationship data')
+                    }
+                    
+                }
+                
+                // uses built-in aggregate json function instead of group_concat craziness
+                const cte=`[${prop.id}_cte] AS (
+                    SELECT "${property_junction_column_name}", json_group_array( json(target_data) ) AS [user_${prop.name}]
+                    FROM 
+                    (
+                        ${target_selects.join(` 
+                        UNION 
+                        `)}
+                    )
+                    GROUP BY "${property_junction_column_name}"
+                )`
+                
+                cte_strings.push(cte);
+                relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
+                cte_joins.push(`LEFT JOIN [${prop.id}_cte] ON [${prop.id}_cte]."${property_junction_column_name}" = ${class_string}.system_id`)
+            }else{
+                relation_selections.push(`'[]' AS [user_${prop.name}]`);
             }
-
-            const cte=`[${prop.id}_cte] AS (
-                SELECT "${p_side}", ('[' || GROUP_CONCAT(json_object,',') || ']') AS [user_${prop.name}]
-                FROM (${target_selects.join(' UNION ')})
-                GROUP BY "${p_side}"
-            )`
             
-            cte_strings.push(cte);
-            relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
-            cte_joins.push(`LEFT JOIN [${prop.id}_cte] ON [${prop.id}_cte]."${p_side}" = ${class_string}.system_id`)
 
         }
 
         let orderby=`ORDER BY ${class_string}.system_order`;
 
+        let comma_break=`,
+            `
+
         let query=`
-            ${cte_strings.length>0?"WITH "+cte_strings.join(','):''}
-            SELECT [class_${class_name}].* ${cte_strings.length>0?', '+relation_selections.join(`, `):''}
+            ${cte_strings.length>0?"WITH "+cte_strings.join(comma_break):''}
+            SELECT [class_${class_name}].* ${relation_selections.length>0?', '+relation_selections.join(`, `):''}
             FROM [class_${class_name}]
             ${cte_joins.join(' ')}
             ${orderby}`;
         
-        console.log('query:\n',query)
+        console.log('query',query)
         // possibly elaborate this any type a little more in the future, e.g. a CellValue or SQLCellValue type that expects some wildcards
         let items=this.db.prepare<[],ClassRow>(query).all();
 
-        let stringified_properties=class_meta.properties.filter(a=>a.type=='relation'||a.max_values>1);
+        let stringified_properties=class_meta.properties.filter(a=>a.type=='relation'||can_have_multiple_values(a.max_values));
         items.map((row)=>{
             if(row && typeof row == 'object'){
                 for (let prop of stringified_properties){

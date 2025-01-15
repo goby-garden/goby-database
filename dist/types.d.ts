@@ -90,11 +90,12 @@ export type ClassMetadata = {
 };
 export type PropertyType = 'data' | 'relation';
 export type BinaryBoolean = 0 | 1;
+export type MaxValues = number | null;
 export type BaseProperty = {
     id: number;
     name: string;
     type: PropertyType;
-    max_values: number;
+    max_values: MaxValues;
 };
 export type RelationDefinition = {
     type: 'relation';
@@ -111,7 +112,7 @@ export type DataDefinition = {
 export type DataProperty = BaseProperty & DataDefinition;
 export type Property = RelationProperty | DataProperty;
 export type PropertyDefinition = {
-    max_values: number;
+    max_values: MaxValues;
 } & ({
     type: 'relation';
 } | DataDefinition);
