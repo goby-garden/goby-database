@@ -75,6 +75,7 @@ export default class Project {
     action_delete_item_from_root(id: number): void;
     action_set_root_item_value(id: number, value: string): void;
     action_add_row(class_id: number): number;
+    get_next_order(table_name: string): number;
     action_make_relation(input_1: ItemRelationSide, input_2: ItemRelationSide): void;
     retrieve_class_items({ class_id, class_name, class_data }: {
         class_id: number;

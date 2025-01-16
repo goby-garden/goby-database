@@ -145,15 +145,6 @@ export default class Project {
             `FOREIGN KEY(system_id) REFERENCES system_root(id)`
         ];
         this.create_table('class', name, columns);
-        // properties:[
-        //     {
-        //         name:'name',
-        //         type:'data',
-        //         id:1,
-        //         data_type:'string',
-        //         max_values:1,
-        //     }
-        // ],
         const class_meta = {
             style: {
                 color: '#b5ffd5'
@@ -166,6 +157,7 @@ export default class Project {
             throw new Error('Something went wrong when generating new class.');
         this.create_table('properties', class_id, [
             `id INTEGER NOT NULL PRIMARY KEY`,
+            `system_order REAL`,
             `name TEXT NOT NULL`,
             `type`,
             `data_type TEXT`,
@@ -181,12 +173,14 @@ export default class Project {
     action_add_data_property({ class_id, name, data_type, max_values, create_column = true }) {
         // 1. Add property to property table  ---------------------------------------------------
         let property_table = `class_${class_id}_properties`;
-        this.db.prepare(`INSERT INTO ${property_table} (name,type,data_type,max_values,metadata) VALUES (@name,@type,@data_type,@max_values,@metadata)`).run({
+        const system_order = this.get_next_order(property_table);
+        this.db.prepare(`INSERT INTO ${property_table} (name,type,data_type,max_values,metadata,system_order) VALUES (@name,@type,@data_type,@max_values,@metadata,@system_order)`).run({
             name,
             type: 'data',
             data_type,
             max_values,
-            metadata: '{}'
+            metadata: '{}',
+            system_order
         });
         // let prop_id=this.get_latest_table_row_id(property_table);
         // 2. Add column to class table ------------------------------------------------
@@ -211,11 +205,13 @@ export default class Project {
     }
     action_add_relation_property(class_id, name, max_values) {
         let property_table = `class_${class_id}_properties`;
-        this.db.prepare(`INSERT INTO ${property_table} (name,type,max_values,metadata) VALUES (@name,@type,@max_values,@metadata)`).run({
+        const system_order = this.get_next_order(property_table);
+        this.db.prepare(`INSERT INTO ${property_table} (name,type,max_values,metadata,system_order) VALUES (@name,@type,@max_values,@metadata,@system_order)`).run({
             name,
             type: 'relation',
             max_values,
-            metadata: '{}'
+            metadata: '{}',
+            system_order
         });
         let prop_id = this.get_latest_table_row_id(property_table);
         if (defined(prop_id)) {
@@ -230,15 +226,20 @@ export default class Project {
         // this is processed in action_edit_class_schema, which handles relation changes/additions concurrently for all the classes they affect.
     }
     delete_property(class_id, prop_id) {
-        //this function is meant to be used within a flow where the relations that need to change as a result of this deletion are already kept track of
+        // NOTE: I need to enforce that you can’t delete the default "name" property
+        // this function is meant to be used within a flow where the relations that need to change as a result of this deletion are already kept track of
         let class_data = this.class_cache.find(a => a.id == class_id);
         if (!class_data)
             throw new Error('Cannot locate class to delete property from.');
-        // NOTE: instead of this array splicing, in the future this should modify a SQL table for properties
-        // NOTE: I need to check the metadata, and if it's a data property, I need also an ALTER TABLE statement here to delete the column
-        let i = class_data.properties.findIndex(a => a.id == prop_id);
-        class_data.properties.splice(i, 1);
-        this.run.save_class_meta.run(JSON.stringify(class_data), class_id);
+        let property = class_data.properties.find(a => a.id == prop_id);
+        if (!property)
+            throw new Error('Cannot locate property to delete.');
+        // delete it from property record
+        this.db.prepare(`DELETE FROM class_${class_id}_properties WHERE id = ${prop_id}`).run();
+        if (property.type == 'data') {
+            // drop column from class table if of type data
+            this.db.prepare(`ALTER TABLE class_${class_id} DROP COLUMN [user_${property.name}]`);
+        }
         this.refresh_caches(['classlist']);
     }
     get_junctions() {
@@ -463,11 +464,7 @@ export default class Project {
         console.log('TBD, class deletion not yet implemented');
     }
     create_junction_table(sides) {
-        // NOTE: in the future I think I'm inclined to store sides as JSON, i.e. {class_id:2,prop_id:1} - slightly more verbose, but a lot more readable and less weird and arbitrary (lol why did I do it in this syntax...)
-        // UPDATE: I think I used this syntax because I need a way to refer to it in junction table column names. but there must be a better way... maybe the column names can always be "side a" and "side b" with the actual props encoded in theh junction list. that seems right.
         var _a;
-        // let str1=`${sides[0].class_id}.${sides[0].prop_id || ''}`;
-        // let str2=`${sides[1].class_id}.${sides[1].prop_id || ''}`;
         // adds new record to junction table
         this.db.prepare(`
             INSERT INTO system_junctionlist 
@@ -481,7 +478,6 @@ export default class Project {
         });
         //gets id of new record
         let id = (_a = this.db.prepare('SELECT id FROM system_junctionlist ORDER BY id DESC').get()) === null || _a === void 0 ? void 0 : _a.id;
-        // console.log('create new junction table',this.db.prepare<[],{id:number}>('SELECT id FROM system_junctionlist ORDER BY id DESC').get())
         if (typeof id !== 'number')
             throw new Error('Something went wrong creating a new relationship');
         // creates table
@@ -564,10 +560,14 @@ export default class Project {
         //first add new row to root and get id
         const root_id = this.action_create_item_in_root({ type: 'class_' + class_id });
         //get the last item in class table order and use it to get the order for the new item
-        const last_ordered_item = this.db.prepare(`SELECT system_order FROM [class_${class_name}] ORDER BY system_order DESC`).get();
-        const new_order = last_ordered_item ? last_ordered_item.system_order + 1000 : 0;
+        const new_order = this.get_next_order(`[class_${class_name}]`);
         this.db.prepare(`INSERT INTO [class_${class_name}] (system_id, system_order) VALUES (${root_id},${new_order})`).run();
         return root_id;
+    }
+    get_next_order(table_name) {
+        const last_ordered_item = this.db.prepare(`SELECT system_order FROM ${table_name} ORDER BY system_order DESC`).get();
+        const new_order = last_ordered_item ? last_ordered_item.system_order + 1000 : 0;
+        return new_order;
     }
     action_make_relation(input_1, input_2) {
         // NOTE: changes to make to this in the future:
@@ -579,7 +579,6 @@ export default class Project {
             input_2: junction_col_name(input_2.class_id, input_2.prop_id)
         };
         let junction_id = (_a = this.junction_cache.find(j => full_relation_match(j.sides, [input_1, input_2]))) === null || _a === void 0 ? void 0 : _a.id;
-        console.log('this.junction_cache', this.junction_cache[0], 'input_1', input_1, 'input_2', input_2);
         if (junction_id) {
             this.db.prepare(`
                 INSERT INTO junction_${junction_id} 
@@ -607,7 +606,6 @@ export default class Project {
         // //joined+added between SELECT and FROM, built from relations
         const relation_selections = [];
         let relation_properties = class_data.properties.filter(a => a.type == 'relation');
-        // console.log('class_meta.properties',class_meta.properties,'relation_properties',relation_properties)
         for (let prop of relation_properties) {
             const target_selects = [];
             let property_junction_column_name = junction_col_name(class_id, prop.id);
@@ -653,7 +651,6 @@ export default class Project {
             FROM [class_${class_name}]
             ${cte_joins.join(' ')}
             ${orderby}`;
-        console.log('query', query);
         // possibly elaborate this any type a little more in the future, e.g. a CellValue or SQLCellValue type that expects some wildcards
         let items = this.db.prepare(query).all();
         let stringified_properties = class_data.properties.filter(a => a.type == 'relation' || can_have_multiple_values(a.max_values));

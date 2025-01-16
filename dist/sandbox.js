@@ -2,9 +2,6 @@ console.log('----------------------------');
 console.log('running sandbox test file...');
 import Project from './index.js';
 const project = new Project(':memory:');
-//A starting class with a name field
-// let base_id=project.action_create_class('base');
-console.log('project.class_cache', project.class_cache);
 project.action_edit_class_schema({
     class_edits: [
         { type: 'create', class_name: 'author' },
@@ -64,5 +61,5 @@ project.action_make_relation({
 });
 // project.refresh_class_cache();
 project.refresh_caches(['classlist', 'items', 'junctions']);
-console.log('project.class_cache[0]', project.class_cache[0].items);
+console.log('project.class_cache[0].items[0]', project.class_cache[0].items[0]);
 //# sourceMappingURL=sandbox.js.map

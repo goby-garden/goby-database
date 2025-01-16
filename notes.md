@@ -377,6 +377,8 @@ Current to-do:
     - [x] separate retrieval of items, properties, and relations
     - [x] get relation targets from junction list rather than storing them on the property (DRY)
 - [ ] implement junction transfer 
+- [ ] take a pass at unifying/clarifying the terminology a little bit
+    - maybe replace "junction" with "relationship" and "relation" with "connection"?
 --- 
 
 Currently working through revising the edit schema function. The class and prop edit loops were simple enough but the relationship edits introduce some complexity:
