@@ -6,8 +6,6 @@ import type {
     SQLClassListRow,
     SQLJunctonListRow,
     JunctionSides,
-    RelationshipSideBase,
-    RelationTarget,
     JunctionList,
     ClassList,
     ClassMetadata,
@@ -27,7 +25,6 @@ import type {
     PropertyType,
     RelationProperty,
     DataProperty,
-    RelationshipSide,
 } from './types.js';
 
 const text_data_types=['string','resource'];
