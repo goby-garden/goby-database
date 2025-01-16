@@ -77,11 +77,40 @@ project.refresh_caches(['classlist','items','junctions']);
 
 console.log('----------------------------')
 console.log('deleting author property in books')
-project.action_edit_class_schema({property_edits:[{
-    type:'delete',
-    class_id:2,
-    prop_id:2
-}]})
+project.action_edit_class_schema(
+    {
+        property_edits:[
+            {
+                type:'delete',
+                class_id:2,
+                prop_id:2
+            }
+        ]
+    }
+)
+// project.action_edit_class_schema(
+//     {
+//         property_edits:[
+//             {
+//                 type:'delete',
+//                 class_id:2,
+//                 prop_id:2
+//             },
+//             {
+//                 type:'create',
+//                 class_id:2,
+//                 prop_name:'author2',
+//                 config:{
+//                     type:'relation',
+//                     max_values:1
+//                 }
+//             }
+//         ],
+//         relationship_edits:[
+//             {type:'create',sides:[{class_id:1,prop_id:3},{class_id:2,prop_name:'author2'}]}
+//         ]
+//     }
+// )
 
 // console.log(project.class_cache[0].items)
 console.log(project.junction_cache.map(a=>a.sides));

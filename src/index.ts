@@ -419,7 +419,7 @@ export default class Project{
                     if(class_edit.class_id){
                         this.action_delete_class(class_edit.class_id);
                         // look for any relationships which will be affected by the deletion of this class, and queue deletion
-     
+                        // NOTE: I need to make sure this delete doesn’t get overwritten/converted somehow
                         for(let junction of this.junction_cache){
                             if(junction.sides.some(s=>s.class_id==class_edit.class_id)){
                                 relationship_edits.push({
@@ -503,6 +503,7 @@ export default class Project{
                                     if(defined(non_matching?.prop_id)){
                                         // if there is a prop on the other side of the relation,
                                         // queue a transfer to a one-sided relation
+                                        // NOTE: I need to see if this can create any kind of conflict with existing relationship edits
                                         relationship_edits.push({
                                             type:'transfer',
                                             id:junction.id,
@@ -574,9 +575,6 @@ export default class Project{
                                 id:junction_id,
                                 sides:new_sides
                             })
-
-                            // 3. delete the old table
-                            this.delete_junction_table(relationship_edit.id);
                         }
                     }
                     break;
@@ -589,14 +587,34 @@ export default class Project{
 
 
     consolidate_relationship_edits(relationship_edits:RelationEdit[]){
+        
         const consolidated_relationship_edits:RelationEdit[]=[];
         const relation_order={transfer:1,create:2,delete:3};
+        const sort_edits=(a:RelationEdit,b:RelationEdit)=>relation_order[a.type] - relation_order[b.type];
+        
+        // NOTE: deduplication is going to have to be addressed somewhere. maybe this is the place, by checking if a change of the type I want to make is already in the queue
+        // - maybe use full_relation_match and check junction IDs where available
 
-        for(let relationship_edit of relationship_edits.sort((a,b)=>relation_order[a.type] - relation_order[b.type])){
+        let source_array=[...relationship_edits];
+        source_array.sort(sort_edits);
+        for(let i=0;i<source_array.length;i++){
+            let relationship_edit=source_array[i];
+            console.log(relationship_edit);
             switch(relationship_edit.type){
                 // all of these are added before anything else
                 case 'transfer':
                     consolidated_relationship_edits.push(relationship_edit);
+                    console.log(`Transferring ${JSON.stringify(relationship_edit.sides)} to ${JSON.stringify(relationship_edit.new_sides)}`)
+                    // transferring the connections implies deleting the source, so we queue that deletion
+                    // deletions only happen after all the transfers, so that multiple properties can copy from the same source.
+                    let delete_queued=source_array.find(a=>a.type=='delete' && a.id==relationship_edit.id);
+                    if(!delete_queued){
+                        console.log(`queuing ${JSON.stringify(relationship_edit.sides)} for deletion after transfer`)
+                        source_array.push({
+                            type:'delete',
+                            id:relationship_edit.id
+                        })
+                    }
                     break;
 
                 // these are processed after the transfers but before the deletes.
@@ -608,11 +626,10 @@ export default class Project{
                             return partial_relation_match(new_sides,r.sides);
                         })
                         
-
                         // if there is an existing match
                         if(existing){
                             // look for a type:"delete" which deletes this relation
-                            let delete_queued=relationship_edits.find(a=>a.type=='delete' && a.id==existing.id);
+                            let delete_queued=source_array.find(a=>a.type=='delete' && a.id==existing.id);
 
                             if(delete_queued){
                                 console.log(`Found valid connection transfer \nfrom ${JSON.stringify(existing.sides)} \nto ${JSON.stringify(new_sides)}.`)
@@ -641,6 +658,11 @@ export default class Project{
                     break;
             }
         }
+
+
+        // for(let relationship_edit of relationship_edits.sort(sort_edits)){
+            
+        // }
 
         return consolidated_relationship_edits;
     }

@@ -364,6 +364,12 @@ _*occasionally outdated/bypassed_
 
 ### Scratchpad
 
+1/16/2025
+
+- I think I need to modify my logic for deleting or creating relations on the basis of classes/properties being deleted
+    - e.g. if I delete a property, but rather than targeting the whole class, I already have a change queued to move the target to a different property. In that situation, it should honor what’s already in the queue instead of queing or overriding another transfer
+    - also, what happens if the classes on either side of a relation are deleted? there may technically be available transfers individually, but they cancel each other out. I need to make sure the classes and properties in new_sides, exist, otherwise reject a transfer and just delete.
+
 1/13/2025
 
 Current to-do:
