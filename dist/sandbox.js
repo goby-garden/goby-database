@@ -2,6 +2,8 @@ console.log('----------------------------');
 console.log('running sandbox test file...');
 import Project from './index.js';
 const project = new Project(':memory:');
+console.log('----------------------------');
+console.log('setting up book-author-script schema');
 project.action_edit_class_schema({
     class_edits: [
         { type: 'create', class_name: 'author' },
@@ -20,10 +22,15 @@ project.action_edit_class_schema({
         { type: 'create', sides: [{ class_name: 'author', prop_name: 'books read' }, { class_name: 'book' }] }
     ]
 });
+console.log(project.junction_cache.map(a => a.sides));
+console.log('----------------------------');
+console.log('adding items to classes');
 project.action_add_row(1);
 project.action_add_row(2);
 project.action_add_row(2);
 project.action_add_row(3);
+console.log('----------------------------');
+console.log('making connections between items in classes');
 project.action_make_relation({
     class_id: 1,
     prop_id: 3,
@@ -42,7 +49,6 @@ project.action_make_relation({
     prop_id: 2,
     item_id: 3
 });
-console.log(project.junction_cache.map(a => a.sides));
 project.action_make_relation({
     class_id: 1,
     prop_id: 3,
@@ -59,7 +65,14 @@ project.action_make_relation({
     class_id: 2,
     item_id: 2
 });
-// project.refresh_class_cache();
 project.refresh_caches(['classlist', 'items', 'junctions']);
-console.log('project.class_cache[0].items[0]', project.class_cache[0].items[0]);
+console.log('----------------------------');
+console.log('deleting author property in books');
+project.action_edit_class_schema({ property_edits: [{
+            type: 'delete',
+            class_id: 2,
+            prop_id: 2
+        }] });
+// console.log(project.class_cache[0].items)
+console.log(project.junction_cache.map(a => a.sides));
 //# sourceMappingURL=sandbox.js.map

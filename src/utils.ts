@@ -1,4 +1,4 @@
-import { JunctionSides, RelationshipSide,MaxValues } from "./types";
+import { JunctionSides, RelationshipSide,MaxValues,RelationshipSideBase } from "./types";
 
 
 export function defined<T>(v:T):v is NonNullable<T>{
@@ -59,7 +59,7 @@ function properties_match(a:RelationshipSide,b:RelationshipSide){
     // return defined(a.prop_id) && defined(b.prop_id) && a.prop_id == b.prop_id;
 }
 
- function side_match(x:RelationshipSide,y:RelationshipSide){
+ export function side_match(x:RelationshipSide,y:RelationshipSide){
     return x.class_id==y.class_id&&properties_match(x,y);
  };
 
@@ -67,6 +67,10 @@ function properties_match(a:RelationshipSide,b:RelationshipSide){
     return (side_match(a[0],b[0])&&side_match(a[1],b[1])) ||
            (side_match(a[0],b[1])&&side_match(a[1],b[0]));
  }
+
+ export function valid_sides(sides:[RelationshipSideBase,RelationshipSideBase]):sides is [RelationshipSide,RelationshipSide]{
+    return defined(sides[0].class_id) && defined(sides[1].class_id)
+}
 
  export function can_have_multiple_values(max_values:MaxValues){
     return max_values==null || max_values>1;

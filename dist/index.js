@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { defined, partial_relation_match, full_relation_match, can_have_multiple_values, junction_col_name } from './utils.js';
+import { defined, partial_relation_match, full_relation_match, can_have_multiple_values, junction_col_name, side_match, valid_sides } from './utils.js';
 const text_data_types = ['string', 'resource'];
 const real_data_types = ['number'];
 export default class Project {
@@ -150,11 +150,13 @@ export default class Project {
                 color: '#b5ffd5'
             }
         };
+        // create entry for class in classlist
         this.db.prepare(`INSERT INTO system_classlist (name, metadata) VALUES ('${name}','${JSON.stringify(class_meta)}')`).run();
-        //get the id of newest value from system_classlist and return
+        //get the id of the newest value
         const class_id = (_a = this.db.prepare('SELECT id FROM system_classlist ORDER BY id DESC').get()) === null || _a === void 0 ? void 0 : _a.id;
         if (class_id == undefined)
             throw new Error('Something went wrong when generating new class.');
+        // create a table to record properties of this class
         this.create_table('properties', class_id, [
             `id INTEGER NOT NULL PRIMARY KEY`,
             `system_order REAL`,
@@ -165,9 +167,8 @@ export default class Project {
             `metadata TEXT`
         ]);
         this.refresh_caches(['classlist']);
+        // add an entry in the property table for the default "name" property. 
         this.action_add_data_property({ class_id, name: 'name', data_type: 'string', max_values: 1, create_column: false });
-        // NOTE: in the future, do not declare properties in the metadata. instead, create a properties table for the class and register them there as rows. this may cause a chicken and egg problem though, if I need the property IDs for the class and the class ID for the props.
-        // maybe if I keep this deterministic, and wait for a further step to add user-defined properties, I'll always know the IDs in the newly created property table, i.e. name, whose ID will presumably just be 1.
         return class_id;
     }
     action_add_data_property({ class_id, name, data_type, max_values, create_column = true }) {
@@ -251,9 +252,8 @@ export default class Project {
         return junction_list_parsed;
     }
     action_edit_class_schema({ class_edits = [], property_edits = [], relationship_edits = [] }) {
-        var _a, _b;
         // get the list of existing relationships
-        let existing_junctions = this.get_junctions();
+        var _a, _b;
         // loop over class changes and make/queue them as needed
         for (let class_edit of class_edits) {
             switch (class_edit.type) {
@@ -286,7 +286,7 @@ export default class Project {
                     if (class_edit.class_id) {
                         this.action_delete_class(class_edit.class_id);
                         // look for any relationships which will be affected by the deletion of this class, and queue deletion
-                        for (let junction of existing_junctions) {
+                        for (let junction of this.junction_cache) {
                             if (junction.sides.some(s => s.class_id == class_edit.class_id)) {
                                 relationship_edits.push({
                                     type: 'delete',
@@ -344,7 +344,7 @@ export default class Project {
                     const prop = (_b = (_a = this.class_cache.find(a => a.id == prop_edit.class_id)) === null || _a === void 0 ? void 0 : _a.properties) === null || _b === void 0 ? void 0 : _b.find((a) => a.id == prop_edit.prop_id);
                     if (prop && prop.type == 'relation') {
                         // queue the deletion or transfer of relations involving this prop
-                        for (let junction of existing_junctions) {
+                        for (let junction of this.junction_cache) {
                             let includes_prop = junction.sides.find(s => {
                                 return s.class_id == prop_edit.class_id && s.prop_id == prop_edit.prop_id;
                             });
@@ -385,11 +385,49 @@ export default class Project {
                     break;
             }
         }
-        // 1. first create an array to consolidate the edits
+        // find cases where relationships getting deleted can transfer their connections to relationships getting created
+        relationship_edits = this.consolidate_relationship_edits(relationship_edits);
+        for (let relationship_edit of relationship_edits) {
+            switch (relationship_edit.type) {
+                case 'create':
+                    {
+                        // create the corresponding junction table
+                        let new_sides = relationship_edit.sides;
+                        if (valid_sides(new_sides)) {
+                            this.create_junction_table(new_sides);
+                        }
+                    }
+                    break;
+                case 'delete':
+                    // delete the corresponding junction table
+                    this.delete_junction_table(relationship_edit.id);
+                    break;
+                case 'transfer':
+                    {
+                        let old_sides = relationship_edit.sides;
+                        let new_sides = relationship_edit.new_sides;
+                        if (valid_sides(new_sides)) {
+                            // 1. create the new junction table 
+                            const junction_id = this.create_junction_table(new_sides);
+                            // 2. copy over the rows from the old table
+                            this.transfer_connections({
+                                id: relationship_edit.id,
+                                sides: old_sides
+                            }, {
+                                id: junction_id,
+                                sides: new_sides
+                            });
+                            // 3. delete the old table
+                            this.delete_junction_table(relationship_edit.id);
+                        }
+                    }
+                    break;
+            }
+        }
+        this.refresh_caches(['classlist', 'items', 'junctions']);
+    }
+    consolidate_relationship_edits(relationship_edits) {
         const consolidated_relationship_edits = [];
-        let valid_sides = (sides) => {
-            return defined(sides[0].class_id) && defined(sides[1].class_id);
-        };
         const relation_order = { transfer: 1, create: 2, delete: 3 };
         for (let relationship_edit of relationship_edits.sort((a, b) => relation_order[a.type] - relation_order[b.type])) {
             switch (relationship_edit.type) {
@@ -402,7 +440,7 @@ export default class Project {
                     let new_sides = relationship_edit.sides;
                     if (valid_sides(new_sides)) {
                         // check if there’s an existing relation that matches both classes and one property
-                        let existing = existing_junctions.find((r) => {
+                        let existing = this.junction_cache.find((r) => {
                             return partial_relation_match(new_sides, r.sides);
                         });
                         // if there is an existing match
@@ -410,6 +448,7 @@ export default class Project {
                             // look for a type:"delete" which deletes this relation
                             let delete_queued = relationship_edits.find(a => a.type == 'delete' && a.id == existing.id);
                             if (delete_queued) {
+                                console.log(`Found valid connection transfer \nfrom ${JSON.stringify(existing.sides)} \nto ${JSON.stringify(new_sides)}.`);
                                 // if there’s a delete, push a transfer instead
                                 consolidated_relationship_edits.push({
                                     type: 'transfer',
@@ -417,6 +456,9 @@ export default class Project {
                                     sides: existing.sides,
                                     new_sides: new_sides
                                 });
+                            }
+                            else {
+                                console.log(`Ignoring ${JSON.stringify(new_sides)}. \nCannot create a second relationship between two classes involving the same property.`);
                             }
                             // if there’s not a delete, we ignore this edit because it’s invalid
                         }
@@ -428,36 +470,12 @@ export default class Project {
                     break;
                 // these are processed last, after the creates and transfers.
                 case 'delete':
-                    // check if there’s already a transfer for it in the consolidated array
-                    let transfer_queued = consolidated_relationship_edits.some(a => a.type == 'transfer' && a.id == relationship_edit.id);
-                    // ignore if so, add it if not.
-                    if (!transfer_queued)
-                        consolidated_relationship_edits.push(relationship_edit);
+                    // these are always processed at the very end
+                    consolidated_relationship_edits.push(relationship_edit);
                     break;
             }
         }
-        for (let relationship_edit of consolidated_relationship_edits) {
-            switch (relationship_edit.type) {
-                case 'create':
-                    // create the corresponding junction table _and_ record the targets in the property definitions
-                    let new_sides = relationship_edit.sides;
-                    if (valid_sides(new_sides)) {
-                        const junction_id = this.create_junction_table(new_sides);
-                        // TBD on recording the targets
-                    }
-                    break;
-                case 'delete':
-                    this.delete_junction_table(relationship_edit.id);
-                    // delete the corresponding junction table and remove target references in the property definitions
-                    break;
-                case 'transfer':
-                    // NOTE: waiting on junction refactor to implement this
-                    // creates a new junction table and deletes an old one, but transfers the old to the new
-                    // ++ the steps above
-                    break;
-            }
-        }
-        this.refresh_caches(['classlist', 'items', 'junctions']);
+        return consolidated_relationship_edits;
     }
     action_delete_class(class_id) {
         // TBD
@@ -488,14 +506,23 @@ export default class Project {
         return id;
     }
     transfer_connections(source, target) {
-        let source_relations = this.db.prepare(`SELECT * FROM junction_${source.id}`).all();
-        //have to match source sides to target sides in order to determine junction order
-        let source_sides = source.side_a.split('.')[0] == target.side_a.split('.')[0] ?
-            [source.side_a, source.side_b] : [source.side_b, source.side_a];
-        for (let relation of source_relations) {
-            this.db.prepare(`INSERT INTO junction_${target.id}("${target.side_a}","${target.side_b}") 
-            VALUES(${relation[source_sides[0]]},${relation[source_sides[1]]})`).run();
-        }
+        let source_match_index = side_match(target.sides[0], source.sides[0]) ? 0 : 1;
+        // flip the order if needed to maximally match the sides
+        let source_ordered = [
+            source.sides[source_match_index],
+            source.sides[Math.abs(source_match_index - 1)]
+        ];
+        let source_col_names = [
+            junction_col_name(source_ordered[0].class_id, source_ordered[0].prop_id),
+            junction_col_name(source_ordered[1].class_id, source_ordered[1].prop_id)
+        ];
+        let target_col_names = [
+            junction_col_name(target.sides[0].class_id, target.sides[0].prop_id),
+            junction_col_name(target.sides[1].class_id, target.sides[1].prop_id)
+        ];
+        this.db.prepare(`
+            INSERT INTO junction_${target.id} (${target_col_names[0]},${target_col_names[1]}) 
+            SELECT ${source_col_names[0]}, ${source_col_names[1]} FROM junction_${source.id}`).run();
     }
     delete_junction_table(id) {
         this.db.prepare(`DELETE FROM system_junctionlist WHERE id = ${id}`).run();
@@ -589,6 +616,7 @@ export default class Project {
         else {
             throw Error('Something went wrong - junction table for relationship not found');
         }
+        // NOTE: should this trigger a refresh to items?
     }
     retrieve_class_items({ class_id, class_name, class_data }) {
         if (class_name == undefined || class_data == undefined) {

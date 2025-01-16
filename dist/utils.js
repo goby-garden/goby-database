@@ -43,13 +43,16 @@ function properties_match(a, b) {
         return a.prop_id == b.prop_id;
     // return defined(a.prop_id) && defined(b.prop_id) && a.prop_id == b.prop_id;
 }
-function side_match(x, y) {
+export function side_match(x, y) {
     return x.class_id == y.class_id && properties_match(x, y);
 }
 ;
 export function full_relation_match(a, b) {
     return (side_match(a[0], b[0]) && side_match(a[1], b[1])) ||
         (side_match(a[0], b[1]) && side_match(a[1], b[0]));
+}
+export function valid_sides(sides) {
+    return defined(sides[0].class_id) && defined(sides[1].class_id);
 }
 export function can_have_multiple_values(max_values) {
     return max_values == null || max_values > 1;

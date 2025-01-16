@@ -49,15 +49,14 @@ export default class Project {
         property_edits?: PropertyEdit[];
         relationship_edits?: RelationEdit[];
     }): void;
+    consolidate_relationship_edits(relationship_edits: RelationEdit[]): RelationEdit[];
     action_delete_class(class_id: number): void;
     create_junction_table(sides: JunctionSides): number;
     transfer_connections(source: {
-        side_a: string;
-        side_b: string;
+        sides: JunctionSides;
         id: number;
     }, target: {
-        side_a: string;
-        side_b: string;
+        sides: JunctionSides;
         id: number;
     }): void;
     delete_junction_table(id: number): void;
