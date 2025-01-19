@@ -476,7 +476,7 @@ export default class Project {
                                 push_if_valid(new_transfer);
                             }
                             else {
-                                console.log(`Ignoring ${readable_edit(relationship_edit, class_cache)}. \nCannot create a second relationship between two classes involving the same property.`);
+                                console.log(`Ignoring ${readable_edit(relationship_edit, class_cache)}; Cannot create a second relationship between two classes involving the same property.`);
                             }
                             // if there’s not a delete, we ignore this edit because it’s invalid
                         }
