@@ -1,3 +1,155 @@
+### Contents:
+
+1. [running notes](#running-notes)
+2. [technical terminology](#goby-technical-terminology)
+3. [things this program should be able to do](#things-this-program-should-be-able-to-do)
+
+...and more below
+
+### Running notes
+
+#### 1/18/2025
+
+Picking up on the reflection from the 16th: I’ve taken care of cases where transfers get queued for nonexistent targets, and general duplicate actions, by filtering those out in the consolidation step. The open question is what to do when someone deletes a property which was previously a target, and then adds their own new target within the same class. Normally when you delete a property which was a target, I queue the creation of a one-way relation to replace it, and transfer the connections from the previous two-way. 
+
+It’s an open question whether to keep that behavior at all, since I could imagine the function just deleting everything that involves deleted targets, with no attempts at preserving data. Likely the interface will automatically handle some of this anyway, and send an input that takes it into account. But on the other hand I think it is nice, especially if someone uses the class as a programmatic interface (not that I necessarily see that happening, but maybe if this project miraculously takes off). So I think I’ll leave it in, and in the future what I could do is make that an option, e.g. "safe mode", set to true/false, that way you can bypass it if you prefer.
+
+What I’d like to do though, since this problem is about validation with other relationship edits, is to address it in the consolidation function. And I think I have a way to accomplish that: when consolidating, if there are multiple creations/transfers involving the same pair of classes and one matching property, pick the one with the highest level of specificity, meaning privilege prop targets to class targets. 
+
+
+#### 1/16/2025
+
+- I think I need to modify my logic for deleting or creating relations on the basis of classes/properties being deleted
+    - e.g. if I delete a property, but rather than targeting the whole class, I already have a change queued to move the target to a different property. In that situation, it should honor what’s already in the queue instead of queing or overriding another transfer
+    - also, what happens if the classes on either side of a relation are deleted? there may technically be available transfers individually, but they cancel each other out. I need to make sure the classes and properties in new_sides, exist, otherwise reject a transfer and just delete.
+
+#### 1/13/2025
+
+Current to-do:
+- [x] refactor junctions so that:
+    - in the junction list, the following are normalized: side_a_class_id, side_a_prop_id, side_b_class_id, side_b_prop_id
+        - should be retrieved as a JunctionSides json array
+    - in individual junctions, the columns should be a little more descriptive, e.g. class_2_property_5 or class_3
+- [x] refactor properties so they exist in their own tables, and are created when classes are created
+- [x] refactor class/junction retrieval and caching
+    - [x] reflect above changes 
+    - [x] separate retrieval of items, properties, and relations
+    - [x] get relation targets from junction list rather than storing them on the property (DRY)
+- [ ] implement junction transfer 
+- [ ] take a pass at unifying/clarifying the terminology a little bit
+    - maybe replace "junction" with "relationship" and "relation" with "connection"?
+
+--- 
+
+Currently working through revising the edit schema function. The class and prop edit loops were simple enough but the relationship edits introduce some complexity:
+
+- relationships can be one-way (e.g. class A prop 1 -> class B) or two-way (e.g. class A prop 1 <-> class B prop 2)
+- if a two-way is converted to a one-way, or vice versa (i.e., when **both of the classes** and **at least one of the properties** persist) we want to transfer the old connections to the new relationship, instead of deleting entirely.
+- I should also enforce the rule that a property can only target one property from a class
+
+How to handle this? What I’m thinking: 
+
+1. create a new consolidated edits array
+2. add the type:"transfer" relations to the array
+3. loop through type:"create" relations
+    - check if there’s an existing relation that matches both classes and one property
+        - if it exists:
+            - look for a type:"delete" which deletes this relation
+                - if there’s a delete, push a transfer
+                - if there’s not a delete, ignore this creation because it’s invalid
+        - if it does not exist
+            - add the type:"create" normally
+4. loop through the type:"delete" relations
+    - check if there’s already a transfer for it in the consolidated array, and ignore if so
+5. loop through the consolidated edits array and apply the changes
+
+
+
+#### 1/7/2025
+
+- the current dilemma is an empty selection is showing up for `FROM` in the class retrieval SQL query, causing a syntax error. I’ve isolated the problem to be that in the sandbox file, I’m attempting to create a relation property without specifying targets, although the property implicitly has some targets, just based on the junctions I’m declaring in the same `action_edit_class_schema` call. So there are a few dimensions here:
+
+- I want to figure out why my type definitions for the input to that function aren’t flagging that there should be `relation_targets` for properties being created
+- I need an approach to relation props that do not have any targets. I don’t necessarily want to allow someone to create them manually, but if all the targeted classes gets deleted, I need a way of handling that which does not break things. Here is my inclination: 
+
+    1. In the interface, _warn_ you if your changes will result in a relation property without any targets. Allow them to do it though, because I know it would be annoying to have to go through editing every property which depends on a class before deleting the class itself.
+
+    2. Conditionally handle empty relation props in the class retrieval function by making them return an empty array instead of it breaking by trying select out of nonexistent SQL tables
+
+- I wonder at what stage I should be performing validation for synchronicity between the junctions and the classes being created. There have sort of been two schools of thought I’ve been bouncing between while building `action_edit_class_schema`:
+    - goby-interface will regardless have to implement a way of on-the-fly editing the staged schema in concert with the GUI, so the input that this function will be getting programmatically _should_ be correct.
+    - _However_, I may want to expose this function for developers to use outside of the goby-interface environment, and it should be modular and stable enough to not crash the database if you fuck something up (such as the error I’m encountering in my sandbox). Part of that is just doing type-checking to prevent malformed inputs, which would resolve my current issue, but part of it is making sure the input is logically consistent. 
+    
+Right now there is a level of redundancy involved, in that I’m specifying both a list of changes to classes, which include some of the relationships which are specified by the junction list. I think in an earlier incarnation of this function, assuming I set it up correctly (which without types is a little iffy to me), it may have been able to infer the targets from the junctions. In any case there’s not an exact parity between the two arrays, such that I could inversely infer the whole junction list directly from the list of changes to classes, because it is the _whole_ junction list: a list of every relationship that is recorded by the project database. Then there’s `action_update_relations`, which is independently performing validation and figuring out what SQL changes need to be made by simply comparing the current and staged lists of junctions.
+
+I think I wanted to pass the whole junction list because that’s way easier from the side of the interface. I will likely have the junctions separated into their own array rather than only implicitly contained in the properties, because that’s a convenient way to represent the data and because it prevents me from having to fetch the whole schema of every class. Then in the editing mode, instead of recording each edit to the relations, I would just need to record the new holistic state and give it to my code here to deal with it. But if I’m doing diffing somewhere anyway, I might as well handle that logic on the front-end, or even provide myself with some utility functions via this package to do it there.
+
+In terms of what actually makes sense to pass to `action_edit_class_schema`, I think I ought to only include the class array, and compile a list of resulting junction changes. What does this entail in terms of handling?
+
+- For property creation: simple enough, create new junctions for each of the targets of the new property
+- For class creation: no need to do anything unless a relation property is also created
+- For class deletion: delete all the relations which involve this class (see discussion above of empty relations)
+- For property deletion: delete any junction tables for one-way class targets of this property. For two-way property targets, instead of completely deleting the tables, I want to convert them to represent one-way class targets by the surviving property
+- For property modification: if the targets change, I just need to create or delete the corresponding tables
+
+This precipitates the realization that another thing that I will have to infer somewhere is what properties will have to be changed as a result of explicitly editing others. Namely, targets will need to be added or removed to corresponding classes based on the changes I make.
+
+It also precipitates the realization that it will be difficult to conclude what changes I need to execute while looping over the change list, since changes may override each other (e.g. I don’t have to delete a property on a class if later on in the edit queue I’m deleting the class altogether). This is probably why I thought to pass the complete new state of the schema rather than a list of edits.
+
+How about this - instead of consolidating the representation of the edit into one list, maybe I differentiate it more:
+
+1. List of class creations and deletions, and title/metadata edits
+2. List of on-property changes, like deletion/creation, data types, and title or styling
+    - explicitly does NOT include targets. they will be populated in 3.
+3. List of relation changes, like changing the targets of the properties
+    - does NOT include changes implied by class and property deletion. these will be inferred and added when processing #1 and #2
+    - DOES include uncreated properties from #2. When going through those changes
+
+This will accomplish a few things:
+
+* normalize the changes into different categories
+* establish an order of operations which prevents changes going through that counteract/override each other
+    * each step depends to a certain extend on the ones that come before it. e.g. properties of a new class need the ID of the class registered before they are created, and new relationships need the IDs of newly created properties (and classes) in order to be themselves registered.
+* prevent information redundancy in the parameters, and the need as a developer to explicitly detail all of the implications of the change that I’m making
+* create a validation funnel for any change to the schema; since every change goes through this function, it can be the central location for any validation logic, and you can make either isolated or bulk changes, which are always handled through the same stable procedure
+
+It has one notable drawback:
+* I have to create data property columns through ALTER TABLE rather than defining them with their class. But I might have been doing this already? (yes, I am already doing this)
+
+---
+
+Another separate thing that occurs to me, which may be a way of solving the current error without philosophical ponderings, is that what’s actually causing the error is me trying to retrieve the items in a class mid-way through editing the schema, because I call `refresh_class_cache` during the class/property creation process. I think this is either an oversight from when I was last working on this, or an oversight from the past couple days of converting to typescript. I should have two functions:
+
+1. One that refreshes the list of classes (with IDs, titles, metadata), and each of their schemas.
+2. One that refreshes the list of items for each of the classes fetched by #1, populating the items array which will be created, empty, in #1.
+
+So in #1, the other thing I will need to do is search the cache before I replace the array to see if that class is already recorded, and copy over the items from the old `ClassData` object to the new one.
+
+---
+
+Other random thoughts:
+- maybe I should replace "metadata" everywhere with "attributes"
+- maybe rename PropertyDefinition to PropertyConfiguration or PropertyConfig
+- could I hypothetically add order to relations? just via an order column in junction tables?
+    - I do not think so, because the order would be different for each item
+    - _but_ I could potentially add the order as an array of IDs in the property metadata? this would just require a dreaded maneuver, storing the data in multiple places...
+    - it could be a JSON column in junction tables keyed by class and prop... but that does sound like a Pain to manage
+- could I hypothetically use one-to-many columns in the global table of junctions that identify them with properties and/or classes?
+
+I don’t know if this would implicitly accomplish the above BUT could I just normalize the class and prop IDs in the junction list like so?:
+
+```
+| id INTEGER NOT NULL PRIMARY KEY | side_a_class_id INTEGER | side_a_prop_id INTEGER | side_b_class_id INTEGER | side_b_prop_id INTEGER |
+FOREIGN KEY(side_a_class_id) REFERENCES system_classlist(id)
+FOREIGN KEY(side_b_class_id) REFERENCES system_classlist(id)
+```
+
+I guess I have to decide whether to create a global _properties_ table as well, just like objects, which could be the foreign key reference for the property ids. 
+
+- _or..._  do I create a global table for class and prop IDs, such that I can just have side_a and side_b referencing IDs in that table, whether they are classes or properties (okay that might be slightly unhinged)
+
+
+
 ### Goby technical terminology:
 
 Some rough definitions of the terms that I use in the `goby-database` codebase*. 
@@ -104,26 +256,6 @@ Visual architecture:
 
 ---
 
-### Property medata storage second thoughts
-
-Right now the array that declares each property of a class is stored within the class’ metadata object, i.e. within a single `TEXT` column of the `system_class` table. But after implementing workspaces, for which I decided to store block information in generated tables, I’m wondering if it makes sense to do the same for properties, i.e. generate property tables for each class in which their data is more normalized. 
-
-I see some possible advantages of this:
-
-* It would make the database more readable for someone looking at it using an ordinary SQL editor. Rather than having to look inside a table column and parse a nested JSON, you could just look at the list of all the tables and see `class_[name]_properties`, and then see them normalized by type, conditions, styling, etcetera. 
-
-* I discovered the need for unique property IDs when I was designing the relation system, and right now that’s implemented through a sort of jank javascript method. Doing things this way, I could let SQLite handle the IDs using a primary key.
-
-* deleting/adding/modifying properties wouldn’t involve replacing an entire metadata object, it would just be a matter of using `DELETE`/`INSERT` on a property table
-
-* I could possibly add per-workspace property styling/sorting etcetera as a user-generated column in this table (although I would also have to manage adding/deleting this column)
-
-* I could do searches/filtering of properties in SQLite instead of JavaScript
-
-
-
----
-
 ### Core concepts:
 * relations types are a unit, embodied by a junction table
     * they define a type of property, shared across its constituent classes
@@ -162,21 +294,7 @@ I see some possible advantages of this:
     * although maybe in the interface still making it a toggle between the single and multi-select that people are familiar with
     * this doesn't work because the conditions are supposed to determine candidates for a relation, and if this is a condition then a single select will have no candidates
 
-#### Junction table decision flow
 
-* Q: does the exact match of classA.property to classB[.property] (or inverse) exist?
-    * A: no
-        * create it
-        * Q: is there a B.property?
-            * A: no
-                * do nothing
-            * A: yes
-                * add the property to a queue to be validated
-    * A: yes
-        * do nothing
-* check for changes in targets (presence or linking), or receive them already-listed, and then make any transfers or deletions of junction tables necessary.
-* Validation: 
-    * iterate over each object in the class and make sure its relations for this property follow its constraints (which also cleans things up if the constraints changed or if a transfer has happened through another property)
 
 #### Return format for relation properties:
 * for each row, an array of the objects its connected to, in the format: `{class_id:X,prop_id:X,object_id:X}`
@@ -232,9 +350,9 @@ Here is what I’m thinking for the table structure:
 
 
 ### Names versus IDs:
-* One goal is to make the sql database on its own basically legible
+* One goal is to make the sql database on its own somewhat legible
 * However, without care, names will run amuck and renaming something will require changing the name in a thousand places. 
-* The approach to this for classes and properties will be to have their names on the actual tables and columns, and their IDs in places where metadata for classes is stored, so at most you only need to change their name in two places
+* Current approach to this for classes and properties is have their names on the actual tables and columns, and their IDs in places where metadata for classes is stored, so at most you only need to change their name in two places
 
 ---
 
@@ -315,189 +433,3 @@ Returning data:
     - `concept id` (item id for `type`='item', class id for `type`='class', etc for any categories I add in the future )
     - `properties` (styling like position and size)
 
-
-
-
----
-
-### Present to-do*:
-
-- Immediate needs for `goby-interface`:
-    - [ ] set up creation/modification/deletion of new loose items, in order to save text objects back to the database
-        - [x] determine table scheme of root item table
-        - [x] method to add item to root and return id
-        - [x] method to remove item from root
-    - [ ] set up a system for saving and retrieving workspace contents/blocks; I am thinking it makes sense for them each to have their own contents table to achieve that
-        - [x] workspace table creation method
-        - [x] method to add item to workspace
-            - needs to get id from root first
-        - [x] method to remove item from workspace
-        - [x] determine right retrieval format for workspace contents and modify `retrieve_windows` to correspond
-            - could use a `join` to get relevant items
-    
-
-- Building out the library:
-    - [ ] set up `action_update_relations` to use new class retrieval function to perform condition validation and make sure all relations in a junction at least abide by the `max` set for that function (or else remove them)
-    - [ ] create a way of deleting relation properties and handling any fallout from that; do the same for deleting classes
-    - [ ] test modifying existing relations in various ways, listed in the test suite below
-    - [ ] possibly modify retrieve class so it joins on the classes its properties are related to and grabs their label 
-
-
-
-_*occasionally outdated/bypassed_
-
-
-
----
-
-### Finished to-do archive:
-- [x] set up comparison of old targets to the new targets in `configure_relation_targets` so I don't have to rely on the changes being passed in from the front-end
-- [x] for `case 'unlink'` in `clean_up_junctions`, have any non-existent one-sided junction tables created on the spot
-- [x] write a new class retrieval function that groups relations so each relation property is an array of objects with the format: `{class_id:X,prop_id:X,object_id:X}`
-- [x] test the modification of existing relation props and their links in `sandbox.js` to work out the kinks
-- [x] import `goby-database` into `goby-interface` locally using `npm link` and test opening a database/running different commands
-
-
-
-
-
-
-### Scratchpad
-
-1/18/2025
-
-Picking up on the reflection from the 16th: I’ve taken care of cases where transfers get queued for nonexistent targets, and general duplicate actions, by filtering those out in the consolidation step. The open question is what to do when someone deletes a property which was previously a target, and then adds their own new target within the same class. Normally when you delete a property which was a target, I queue the creation of a one-way relation to replace it, and transfer the connections from the previous two-way. 
-
-It’s an open question whether to keep that behavior at all, since I could imagine the function just deleting everything that involves deleted targets, with no attempts at preserving data. Likely the interface will automatically handle some of this anyway, and send an input that takes it into account. But on the other hand I think it is nice, especially if someone uses the class as a programmatic interface (not that I necessarily see that happening, but maybe if this project miraculously takes off). So I think I’ll leave it in, and in the future what I could do is make that an option, e.g. "safe mode", set to true/false, that way you can bypass it if you prefer.
-
-What I’d like to do though, since this problem is about validation with other relationship edits, is to address it in the consolidation function. And I think I have a way to accomplish that: when consolidating, if there are multiple creations/transfers involving the same pair of classes and one matching property, pick the one with the highest level of specificity, meaning privilege prop targets to class targets. 
-
-
-1/16/2025
-
-- I think I need to modify my logic for deleting or creating relations on the basis of classes/properties being deleted
-    - e.g. if I delete a property, but rather than targeting the whole class, I already have a change queued to move the target to a different property. In that situation, it should honor what’s already in the queue instead of queing or overriding another transfer
-    - also, what happens if the classes on either side of a relation are deleted? there may technically be available transfers individually, but they cancel each other out. I need to make sure the classes and properties in new_sides, exist, otherwise reject a transfer and just delete.
-
-1/13/2025
-
-Current to-do:
-- [x] refactor junctions so that:
-    - in the junction list, the following are normalized: side_a_class_id, side_a_prop_id, side_b_class_id, side_b_prop_id
-        - should be retrieved as a JunctionSides json array
-    - in individual junctions, the columns should be a little more descriptive, e.g. class_2_property_5 or class_3
-- [x] refactor properties so they exist in their own tables, and are created when classes are created
-- [x] refactor class/junction retrieval and caching
-    - [x] reflect above changes 
-    - [x] separate retrieval of items, properties, and relations
-    - [x] get relation targets from junction list rather than storing them on the property (DRY)
-- [ ] implement junction transfer 
-- [ ] take a pass at unifying/clarifying the terminology a little bit
-    - maybe replace "junction" with "relationship" and "relation" with "connection"?
---- 
-
-Currently working through revising the edit schema function. The class and prop edit loops were simple enough but the relationship edits introduce some complexity:
-
-- relationships can be one-way (e.g. class A prop 1 -> class B) or two-way (e.g. class A prop 1 <-> class B prop 2)
-- if a two-way is converted to a one-way, or vice versa (i.e., when **both of the classes** and **at least one of the properties** persist) we want to transfer the old connections to the new relationship, instead of deleting entirely.
-- I should also enforce the rule that a property can only target one property from a class
-
-How to handle this? What I’m thinking: 
-
-1. create a new consolidated edits array
-2. add the type:"transfer" relations to the array
-3. loop through type:"create" relations
-    - check if there’s an existing relation that matches both classes and one property
-        - if it exists:
-            - look for a type:"delete" which deletes this relation
-                - if there’s a delete, push a transfer
-                - if there’s not a delete, ignore this creation because it’s invalid
-        - if it does not exist
-            - add the type:"create" normally
-4. loop through the type:"delete" relations
-    - check if there’s already a transfer for it in the consolidated array, and ignore if so
-5. loop through the consolidated edits array and apply the changes
-
-
-
-1/7/2025
-- the current dilemma is an empty selection is showing up for `FROM` in the class retrieval SQL query, causing a syntax error. I’ve isolated the problem to be that in the sandbox file, I’m attempting to create a relation property without specifying targets, although the property implicitly has some targets, just based on the junctions I’m declaring in the same `action_edit_class_schema` call. So there are a few dimensions here:
-
-- I want to figure out why my type definitions for the input to that function aren’t flagging that there should be `relation_targets` for properties being created
-- I need an approach to relation props that do not have any targets. I don’t necessarily want to allow someone to create them manually, but if all the targeted classes gets deleted, I need a way of handling that which does not break things. Here is my inclination: 
-
-    1. In the interface, _warn_ you if your changes will result in a relation property without any targets. Allow them to do it though, because I know it would be annoying to have to go through editing every property which depends on a class before deleting the class itself.
-
-    2. Conditionally handle empty relation props in the class retrieval function by making them return an empty array instead of it breaking by trying select out of nonexistent SQL tables
-
-- I wonder at what stage I should be performing validation for synchronicity between the junctions and the classes being created. There have sort of been two schools of thought I’ve been bouncing between while building `action_edit_class_schema`:
-    - goby-interface will regardless have to implement a way of on-the-fly editing the staged schema in concert with the GUI, so the input that this function will be getting programmatically _should_ be correct.
-    - _However_, I may want to expose this function for developers to use outside of the goby-interface environment, and it should be modular and stable enough to not crash the database if you fuck something up (such as the error I’m encountering in my sandbox). Part of that is just doing type-checking to prevent malformed inputs, which would resolve my current issue, but part of it is making sure the input is logically consistent. 
-    
-Right now there is a level of redundancy involved, in that I’m specifying both a list of changes to classes, which include some of the relationships which are specified by the junction list. I think in an earlier incarnation of this function, assuming I set it up correctly (which without types is a little iffy to me), it may have been able to infer the targets from the junctions. In any case there’s not an exact parity between the two arrays, such that I could inversely infer the whole junction list directly from the list of changes to classes, because it is the _whole_ junction list: a list of every relationship that is recorded by the project database. Then there’s `action_update_relations`, which is independently performing validation and figuring out what SQL changes need to be made by simply comparing the current and staged lists of junctions.
-
-I think I wanted to pass the whole junction list because that’s way easier from the side of the interface. I will likely have the junctions separated into their own array rather than only implicitly contained in the properties, because that’s a convenient way to represent the data and because it prevents me from having to fetch the whole schema of every class. Then in the editing mode, instead of recording each edit to the relations, I would just need to record the new holistic state and give it to my code here to deal with it. But if I’m doing diffing somewhere anyway, I might as well handle that logic on the front-end, or even provide myself with some utility functions via this package to do it there.
-
-In terms of what actually makes sense to pass to `action_edit_class_schema`, I think I ought to only include the class array, and compile a list of resulting junction changes. What does this entail in terms of handling?
-
-- For property creation: simple enough, create new junctions for each of the targets of the new property
-- For class creation: no need to do anything unless a relation property is also created
-- For class deletion: delete all the relations which involve this class (see discussion above of empty relations)
-- For property deletion: delete any junction tables for one-way class targets of this property. For two-way property targets, instead of completely deleting the tables, I want to convert them to represent one-way class targets by the surviving property
-- For property modification: if the targets change, I just need to create or delete the corresponding tables
-
-This precipitates the realization that another thing that I will have to infer somewhere is what properties will have to be changed as a result of explicitly editing others. Namely, targets will need to be added or removed to corresponding classes based on the changes I make.
-
-It also precipitates the realization that it will be difficult to conclude what changes I need to execute while looping over the change list, since changes may override each other (e.g. I don’t have to delete a property on a class if later on in the edit queue I’m deleting the class altogether). This is probably why I thought to pass the complete new state of the schema rather than a list of edits.
-
-How about this - instead of consolidating the representation of the edit into one list, maybe I differentiate it more:
-
-1. List of class creations and deletions, and title/metadata edits
-2. List of on-property changes, like deletion/creation, data types, and title or styling
-    - explicitly does NOT include targets. they will be populated in 3.
-3. List of relation changes, like changing the targets of the properties
-    - does NOT include changes implied by class and property deletion. these will be inferred and added when processing #1 and #2
-    - DOES include uncreated properties from #2. When going through those changes
-
-This will accomplish a few things:
-
-* normalize the changes into different categories
-* establish an order of operations which prevents changes going through that counteract/override each other
-    * each step depends to a certain extend on the ones that come before it. e.g. properties of a new class need the ID of the class registered before they are created, and new relationships need the IDs of newly created properties (and classes) in order to be themselves registered.
-* prevent information redundancy in the parameters, and the need as a developer to explicitly detail all of the implications of the change that I’m making
-* create a validation funnel for any change to the schema; since every change goes through this function, it can be the central location for any validation logic, and you can make either isolated or bulk changes, which are always handled through the same stable procedure
-
-It has one notable drawback:
-* I have to create data property columns through ALTER TABLE rather than defining them with their class. But I might have been doing this already? (yes, I am already doing this)
-
----
-
-Another separate thing that occurs to me, which may be a way of solving the current error without philosophical ponderings, is that what’s actually causing the error is me trying to retrieve the items in a class mid-way through editing the schema, because I call `refresh_class_cache` during the class/property creation process. I think this is either an oversight from when I was last working on this, or an oversight from the past couple days of converting to typescript. I should have two functions:
-
-1. One that refreshes the list of classes (with IDs, titles, metadata), and each of their schemas.
-2. One that refreshes the list of items for each of the classes fetched by #1, populating the items array which will be created, empty, in #1.
-
-So in #1, the other thing I will need to do is search the cache before I replace the array to see if that class is already recorded, and copy over the items from the old `ClassData` object to the new one.
-
----
-
-Other random thoughts:
-- maybe I should replace "metadata" everywhere with "attributes"
-- maybe rename PropertyDefinition to PropertyConfiguration or PropertyConfig
-- could I hypothetically add order to relations? just via an order column in junction tables?
-    - I do not think so, because the order would be different for each item
-    - _but_ I could potentially add the order as an array of IDs in the property metadata? this would just require a dreaded maneuver, storing the data in multiple places...
-    - it could be a JSON column in junction tables keyed by class and prop... but that does sound like a Pain to manage
-- could I hypothetically use one-to-many columns in the global table of junctions that identify them with properties and/or classes?
-
-I don’t know if this would implicitly accomplish the above BUT could I just normalize the class and prop IDs in the junction list like so?:
-
-```
-| id INTEGER NOT NULL PRIMARY KEY | side_a_class_id INTEGER | side_a_prop_id INTEGER | side_b_class_id INTEGER | side_b_prop_id INTEGER |
-FOREIGN KEY(side_a_class_id) REFERENCES system_classlist(id)
-FOREIGN KEY(side_b_class_id) REFERENCES system_classlist(id)
-```
-
-I guess I have to decide whether to create a global _properties_ table as well, just like objects, which could be the foreign key reference for the property ids. 
-
-- _or..._  do I create a global table for class and prop IDs, such that I can just have side_a and side_b referencing IDs in that table, whether they are classes or properties (okay that might be slightly unhinged)
