@@ -364,6 +364,15 @@ _*occasionally outdated/bypassed_
 
 ### Scratchpad
 
+1/18/2025
+
+Picking up on the reflection from the 16th: I’ve taken care of cases where transfers get queued for nonexistent targets, and general duplicate actions, by filtering those out in the consolidation step. The open question is what to do when someone deletes a property which was previously a target, and then adds their own new target within the same class. Normally when you delete a property which was a target, I queue the creation of a one-way relation to replace it, and transfer the connections from the previous two-way. 
+
+It’s an open question whether to keep that behavior at all, since I could imagine the function just deleting everything that involves deleted targets, with no attempts at preserving data. Likely the interface will automatically handle some of this anyway, and send an input that takes it into account. But on the other hand I think it is nice, especially if someone uses the class as a programmatic interface (not that I necessarily see that happening, but maybe if this project miraculously takes off). So I think I’ll leave it in, and in the future what I could do is make that an option, e.g. "safe mode", set to true/false, that way you can bypass it if you prefer.
+
+What I’d like to do though, since this problem is about validation with other relationship edits, is to address it in the consolidation function. And I think I have a way to accomplish that: when consolidating, if there are multiple creations/transfers involving the same pair of classes and one matching property, pick the one with the highest level of specificity, meaning privilege prop targets to class targets. 
+
+
 1/16/2025
 
 - I think I need to modify my logic for deleting or creating relations on the basis of classes/properties being deleted

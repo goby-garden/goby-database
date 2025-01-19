@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { defined, partial_relation_match, full_relation_match, can_have_multiple_values, junction_col_name, side_match, valid_sides } from './utils.js';
+import { defined, partial_relation_match, full_relation_match, can_have_multiple_values, junction_col_name, side_match, two_way, edit_has_valid_sides, readable_edit } from './utils.js';
 const text_data_types = ['string', 'resource'];
 const real_data_types = ['number'];
 export default class Project {
@@ -353,7 +353,9 @@ export default class Project {
                                 if (non_matching) {
                                     if (defined(non_matching === null || non_matching === void 0 ? void 0 : non_matching.prop_id)) {
                                         // if there is a prop on the other side of the relation,
+                                        // and (to add) if there is not a partial match create or transfer in relationship_edits
                                         // queue a transfer to a one-sided relation
+                                        // NOTE: I need to see if this can create any kind of conflict with existing relationship edits
                                         relationship_edits.push({
                                             type: 'transfer',
                                             id: junction.id,
@@ -385,17 +387,16 @@ export default class Project {
                     break;
             }
         }
+        this.refresh_caches(['classlist']);
         // find cases where relationships getting deleted can transfer their connections to relationships getting created
-        relationship_edits = this.consolidate_relationship_edits(relationship_edits);
-        for (let relationship_edit of relationship_edits) {
+        let consolidated_relationship_edits = this.consolidate_relationship_edits(relationship_edits);
+        for (let relationship_edit of consolidated_relationship_edits) {
             switch (relationship_edit.type) {
                 case 'create':
                     {
                         // create the corresponding junction table
                         let new_sides = relationship_edit.sides;
-                        if (valid_sides(new_sides)) {
-                            this.create_junction_table(new_sides);
-                        }
+                        this.create_junction_table(new_sides);
                     }
                     break;
                 case 'delete':
@@ -406,18 +407,16 @@ export default class Project {
                     {
                         let old_sides = relationship_edit.sides;
                         let new_sides = relationship_edit.new_sides;
-                        if (valid_sides(new_sides)) {
-                            // 1. create the new junction table 
-                            const junction_id = this.create_junction_table(new_sides);
-                            // 2. copy over the rows from the old table
-                            this.transfer_connections({
-                                id: relationship_edit.id,
-                                sides: old_sides
-                            }, {
-                                id: junction_id,
-                                sides: new_sides
-                            });
-                        }
+                        // 1. create the new junction table 
+                        const junction_id = this.create_junction_table(new_sides);
+                        // 2. copy over the rows from the old table
+                        this.transfer_connections({
+                            id: relationship_edit.id,
+                            sides: old_sides
+                        }, {
+                            id: junction_id,
+                            sides: new_sides
+                        });
                     }
                     break;
             }
@@ -425,34 +424,38 @@ export default class Project {
         this.refresh_caches(['classlist', 'items', 'junctions']);
     }
     consolidate_relationship_edits(relationship_edits) {
-        const consolidated_relationship_edits = [];
+        let class_cache = this.class_cache;
+        let consolidated_relationship_edits = [];
         const relation_order = { transfer: 1, create: 2, delete: 3 };
         const sort_edits = (a, b) => relation_order[a.type] - relation_order[b.type];
-        let source_array = [...relationship_edits];
+        let source_array = [...relationship_edits.filter(edit_has_valid_sides)];
         source_array.sort(sort_edits);
         for (let i = 0; i < source_array.length; i++) {
             let relationship_edit = source_array[i];
-            console.log(relationship_edit);
             switch (relationship_edit.type) {
                 // all of these are added before anything else
                 case 'transfer':
-                    consolidated_relationship_edits.push(relationship_edit);
-                    console.log(`Transferring ${JSON.stringify(relationship_edit.sides)} to ${JSON.stringify(relationship_edit.new_sides)}`);
-                    // transferring the connections implies deleting the source, so we queue that deletion
-                    // deletions only happen after all the transfers, so that multiple properties can copy from the same source.
-                    let delete_queued = source_array.find(a => a.type == 'delete' && a.id == relationship_edit.id);
-                    if (!delete_queued) {
-                        console.log(`queuing ${JSON.stringify(relationship_edit.sides)} for deletion after transfer`);
-                        source_array.push({
-                            type: 'delete',
-                            id: relationship_edit.id
-                        });
+                    {
+                        console.log(`Queing ${readable_edit(relationship_edit, class_cache)}`);
+                        push_if_valid(relationship_edit);
+                        // transferring the connections implies deleting the source, so we queue that deletion
+                        // deletions only happen after all the transfers, 
+                        // so that multiple properties can copy from the same source.
+                        let delete_queued = source_array.find(a => a.type == 'delete' && a.id == relationship_edit.id);
+                        if (!delete_queued) {
+                            let del = {
+                                type: 'delete',
+                                id: relationship_edit.id
+                            };
+                            console.log(`Queuing ${readable_edit(del, class_cache)} after transfer`);
+                            source_array.push(del);
+                        }
                     }
                     break;
                 // these are processed after the transfers but before the deletes.
                 case 'create':
-                    let new_sides = relationship_edit.sides;
-                    if (valid_sides(new_sides)) {
+                    {
+                        let new_sides = relationship_edit.sides;
                         // check if there’s an existing relation that matches both classes and one property
                         let existing = this.junction_cache.find((r) => {
                             return partial_relation_match(new_sides, r.sides);
@@ -462,36 +465,127 @@ export default class Project {
                             // look for a type:"delete" which deletes this relation
                             let delete_queued = source_array.find(a => a.type == 'delete' && a.id == existing.id);
                             if (delete_queued) {
-                                console.log(`Found valid connection transfer \nfrom ${JSON.stringify(existing.sides)} \nto ${JSON.stringify(new_sides)}.`);
-                                // if there’s a delete, push a transfer instead
-                                consolidated_relationship_edits.push({
+                                let new_transfer = {
                                     type: 'transfer',
                                     id: existing.id,
                                     sides: existing.sides,
                                     new_sides: new_sides
-                                });
+                                };
+                                console.log(`Found valid ${readable_edit(new_transfer, class_cache)}`);
+                                // if there’s a delete, push a transfer instead
+                                push_if_valid(new_transfer);
                             }
                             else {
-                                console.log(`Ignoring ${JSON.stringify(new_sides)}. \nCannot create a second relationship between two classes involving the same property.`);
+                                console.log(`Ignoring ${readable_edit(relationship_edit, class_cache)}. \nCannot create a second relationship between two classes involving the same property.`);
                             }
                             // if there’s not a delete, we ignore this edit because it’s invalid
                         }
                         else {
                             // if it does not exist, add the type:"create" normally
-                            consolidated_relationship_edits.push(relationship_edit);
+                            push_if_valid(relationship_edit);
                         }
                     }
                     break;
                 // these are processed last, after the creates and transfers.
                 case 'delete':
                     // these are always processed at the very end
-                    consolidated_relationship_edits.push(relationship_edit);
+                    push_if_valid(relationship_edit);
                     break;
             }
         }
-        // for(let relationship_edit of relationship_edits.sort(sort_edits)){
-        // }
+        // lastly, filter out duplicates of the same partial match (has to be separate because it picks the most specific);
+        consolidated_relationship_edits = filter_best_of_partial_matches(consolidated_relationship_edits);
         return consolidated_relationship_edits;
+        // ignores if it already exists in the consolidated list (deduplication)
+        // ignores if it targets a class/property that no longer exists
+        function push_if_valid(edit) {
+            let edit_already_added;
+            let targets_exist = true;
+            switch (edit.type) {
+                case 'create':
+                    {
+                        edit_already_added = consolidated_relationship_edits.some(a => {
+                            return a.type == 'create'
+                                && full_relation_match(a.sides, edit.sides);
+                        });
+                        targets_exist = check_if_targets_exist(edit.sides);
+                    }
+                    break;
+                case 'delete':
+                    {
+                        edit_already_added = consolidated_relationship_edits.some(a => a.type == 'delete' && a.id == edit.id);
+                    }
+                    break;
+                case 'transfer': {
+                    edit_already_added = consolidated_relationship_edits.some(a => {
+                        return a.type == 'transfer'
+                            && a.id == edit.id
+                            && full_relation_match(a.new_sides, edit.new_sides);
+                    });
+                    targets_exist = check_if_targets_exist(edit.sides);
+                }
+            }
+            if (!(targets_exist && !edit_already_added))
+                console.log('Skipped invalid', edit, '\n   targeting deleted class/property:', !targets_exist, '\n   edit already added:', edit_already_added);
+            if (targets_exist && !edit_already_added)
+                consolidated_relationship_edits.push(edit);
+        }
+        function check_if_targets_exist(sides) {
+            for (let side of sides) {
+                let class_for_side = class_cache.find((c) => c.id == side.class_id);
+                if (!class_for_side) {
+                    return false;
+                }
+                else if (defined(side.prop_id)) {
+                    let prop = class_for_side.properties.find(a => a.id == side.prop_id);
+                    if (!prop)
+                        return false;
+                }
+            }
+            return true;
+        }
+        // allow no more than one of each partial match (partial match = shares both classes and one property)
+        // privilege relations with properties on both sides (two way); else accept the first one in the list.
+        function filter_best_of_partial_matches(edits) {
+            return edits.filter(edit => {
+                if (edit.type == 'delete')
+                    return true;
+                if (edit.exclude)
+                    return false;
+                // keeps track of whether or not to keep this item in filtered selection
+                let include = true;
+                let sides = edit.type == 'transfer' ? edit.new_sides : edit.sides;
+                let is_two_way = two_way(sides);
+                // look for partial matches in the array
+                for (let comparison of consolidated_relationship_edits) {
+                    if (comparison == edit || comparison.type == 'delete' || comparison.exclude) {
+                        // ignore if not applicable
+                        continue;
+                    }
+                    else {
+                        let comparison_sides = comparison.type == 'transfer' ? comparison.new_sides : comparison.sides;
+                        // check if it’s a partial match
+                        if (partial_relation_match(comparison_sides, sides)) {
+                            // if so, check if the compared edit is two-way
+                            let comparison_is_two_way = two_way(comparison_sides);
+                            if (!is_two_way && comparison_is_two_way) {
+                                // if the comparison is two-way and this item is not, we know it should not be included
+                                // because there is something higher priority
+                                console.log(`Excluding ${readable_edit(edit, class_cache)} as there is a higher priority relation`);
+                                edit.exclude = true;
+                                include = false;
+                            }
+                            else {
+                                console.log(`Excluding ${readable_edit(comparison, class_cache)} as there is a higher priority relation`);
+                                // we know the current item is higher priority, and so we ought to exclude the compared item for the rest of the loop
+                                comparison.exclude = true;
+                            }
+                        }
+                    }
+                }
+                return include;
+            });
+        }
     }
     action_delete_class(class_id) {
         // TBD

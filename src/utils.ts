@@ -1,4 +1,4 @@
-import { JunctionSides, RelationshipSide,MaxValues,RelationshipSideBase } from "./types";
+import { JunctionSides, RelationshipSide,MaxValues,RelationshipSideBase, RelationEdit, RelationEditValidSides,ClassData,JunctionList } from "./types";
 
 
 export function defined<T>(v:T):v is NonNullable<T>{
@@ -68,9 +68,30 @@ function properties_match(a:RelationshipSide,b:RelationshipSide){
            (side_match(a[0],b[1])&&side_match(a[1],b[0]));
  }
 
- export function valid_sides(sides:[RelationshipSideBase,RelationshipSideBase]):sides is [RelationshipSide,RelationshipSide]{
+export function valid_sides(sides:[RelationshipSideBase,RelationshipSideBase]):sides is [RelationshipSide,RelationshipSide]{
     return defined(sides[0].class_id) && defined(sides[1].class_id)
 }
+
+export function two_way(sides:JunctionSides){
+    return defined(sides[0].prop_id) && defined(sides[1].prop_id);
+}
+
+export function edit_has_valid_sides(edit:RelationEdit):edit is RelationEditValidSides{
+    switch(edit.type){
+        case 'create':
+            if(valid_sides(edit.sides)) return true;
+            break;
+        case 'transfer':
+            if(valid_sides(edit.sides)&&valid_sides(edit.new_sides)) return true;
+            break;
+        case 'delete':{
+            return true;
+        }
+    }
+    return false;
+}
+
+
 
  export function can_have_multiple_values(max_values:MaxValues){
     return max_values==null || max_values>1;
@@ -79,4 +100,34 @@ function properties_match(a:RelationshipSide,b:RelationshipSide){
 export function junction_col_name(class_id:number,prop_id:number | undefined | null):string{
     let prop_str=defined(prop_id)?`_prop_${prop_id}`:``
     return `class_${class_id}${prop_str}`;
+}
+
+
+export function readable_side(side:RelationshipSide,classlist:ClassData[]){
+    let matching_class=classlist.find(c=>c.id==side.class_id);
+    let matching_prop=side.prop_id?(matching_class?.properties?.find(p=>p.id==side.prop_id)?.name || ''):'';
+    
+    matching_prop=matching_prop?`.[${matching_prop}]`:'';
+
+
+    return `${matching_class?.name || ''}${matching_prop}`;
+}
+
+function readable_sides(sides:JunctionSides,classlist:ClassData[]){
+    return `${readable_side(sides[0],classlist)} <-> ${readable_side(sides[1],classlist)}`
+}
+
+
+export function readable_edit(edit:RelationEditValidSides,classlist:ClassData[]){
+    if(edit.type=='delete') return `deletion of relation ${edit.id}`;
+    else if (edit.type=='transfer') return `transfer of (${readable_sides(edit.sides,classlist)}) to (${readable_sides(edit.new_sides,classlist)})`;
+    else if (edit.type=='create') return `creation of (${readable_sides(edit.sides,classlist)})`;
+}
+
+
+export function readable_junctionlist(relationships:JunctionList,classlist:ClassData[]){
+
+    return relationships.map((r)=>{
+        return readable_sides(r.sides,classlist)
+    })
 }

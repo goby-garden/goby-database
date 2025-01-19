@@ -54,11 +54,53 @@ export function full_relation_match(a, b) {
 export function valid_sides(sides) {
     return defined(sides[0].class_id) && defined(sides[1].class_id);
 }
+export function two_way(sides) {
+    return defined(sides[0].prop_id) && defined(sides[1].prop_id);
+}
+export function edit_has_valid_sides(edit) {
+    switch (edit.type) {
+        case 'create':
+            if (valid_sides(edit.sides))
+                return true;
+            break;
+        case 'transfer':
+            if (valid_sides(edit.sides) && valid_sides(edit.new_sides))
+                return true;
+            break;
+        case 'delete': {
+            return true;
+        }
+    }
+    return false;
+}
 export function can_have_multiple_values(max_values) {
     return max_values == null || max_values > 1;
 }
 export function junction_col_name(class_id, prop_id) {
     let prop_str = defined(prop_id) ? `_prop_${prop_id}` : ``;
     return `class_${class_id}${prop_str}`;
+}
+export function readable_side(side, classlist) {
+    var _a, _b;
+    let matching_class = classlist.find(c => c.id == side.class_id);
+    let matching_prop = side.prop_id ? (((_b = (_a = matching_class === null || matching_class === void 0 ? void 0 : matching_class.properties) === null || _a === void 0 ? void 0 : _a.find(p => p.id == side.prop_id)) === null || _b === void 0 ? void 0 : _b.name) || '') : '';
+    matching_prop = matching_prop ? `.[${matching_prop}]` : '';
+    return `${(matching_class === null || matching_class === void 0 ? void 0 : matching_class.name) || ''}${matching_prop}`;
+}
+function readable_sides(sides, classlist) {
+    return `${readable_side(sides[0], classlist)} <-> ${readable_side(sides[1], classlist)}`;
+}
+export function readable_edit(edit, classlist) {
+    if (edit.type == 'delete')
+        return `deletion of relation ${edit.id}`;
+    else if (edit.type == 'transfer')
+        return `transfer of (${readable_sides(edit.sides, classlist)}) to (${readable_sides(edit.new_sides, classlist)})`;
+    else if (edit.type == 'create')
+        return `creation of (${readable_sides(edit.sides, classlist)})`;
+}
+export function readable_junctionlist(relationships, classlist) {
+    return relationships.map((r) => {
+        return readable_sides(r.sides, classlist);
+    });
 }
 //# sourceMappingURL=utils.js.map

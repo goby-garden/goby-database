@@ -1,9 +1,10 @@
-console.log('----------------------------');
-console.log('running sandbox test file...');
+import { readable_junctionlist } from './utils.js';
+console.log('--------------------------------------------------------');
+console.log('SANDBOX: running test...\n');
 import Project from './index.js';
 const project = new Project(':memory:');
-console.log('----------------------------');
-console.log('setting up book-author-script schema');
+console.log('--------------------------------------------------------');
+console.log('SANDBOX: setting up book-author-script schema\n');
 project.action_edit_class_schema({
     class_edits: [
         { type: 'create', class_name: 'author' },
@@ -23,14 +24,14 @@ project.action_edit_class_schema({
     ]
 });
 console.log(project.junction_cache.map(a => a.sides));
-console.log('----------------------------');
-console.log('adding items to classes');
+console.log('--------------------------------------------------------');
+console.log('SANDBOX: adding items to classes\n');
 project.action_add_row(1);
 project.action_add_row(2);
 project.action_add_row(2);
 project.action_add_row(3);
-console.log('----------------------------');
-console.log('making connections between items in classes');
+console.log('--------------------------------------------------------');
+console.log('SANDBOX: making connections between items in classes\n');
 project.action_make_relation({
     class_id: 1,
     prop_id: 3,
@@ -66,40 +67,28 @@ project.action_make_relation({
     item_id: 2
 });
 project.refresh_caches(['classlist', 'items', 'junctions']);
-console.log('----------------------------');
-console.log('deleting author property in books');
+console.log('--------------------------------------------------------');
+console.log('SANDBOX: deleting author property in books\n');
 project.action_edit_class_schema({
     property_edits: [
         {
             type: 'delete',
             class_id: 2,
             prop_id: 2
+        },
+        {
+            type: 'create',
+            class_id: 2,
+            prop_name: 'author2',
+            config: {
+                type: 'relation',
+                max_values: 1
+            }
         }
+    ],
+    relationship_edits: [
+        { type: 'create', sides: [{ class_id: 1, prop_id: 3 }, { class_id: 2, prop_name: 'author2' }] }
     ]
 });
-// project.action_edit_class_schema(
-//     {
-//         property_edits:[
-//             {
-//                 type:'delete',
-//                 class_id:2,
-//                 prop_id:2
-//             },
-//             {
-//                 type:'create',
-//                 class_id:2,
-//                 prop_name:'author2',
-//                 config:{
-//                     type:'relation',
-//                     max_values:1
-//                 }
-//             }
-//         ],
-//         relationship_edits:[
-//             {type:'create',sides:[{class_id:1,prop_id:3},{class_id:2,prop_name:'author2'}]}
-//         ]
-//     }
-// )
-// console.log(project.class_cache[0].items)
-console.log(project.junction_cache.map(a => a.sides));
+console.log(readable_junctionlist(project.junction_cache, project.class_cache));
 //# sourceMappingURL=sandbox.js.map

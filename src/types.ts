@@ -65,6 +65,8 @@ type RelationTransfer = {
 
 export type RelationEdit = RelationCreate | RelationDelete | RelationTransfer;
 
+export type RelationEditValidSides = (RelationCreate & {sides:JunctionSides})| (RelationTransfer & {sides:JunctionSides, new_sides:JunctionSides}) | RelationDelete;
+
 type PropertyCreate ={
   type:'create',
   prop_name:string

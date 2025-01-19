@@ -1,5 +1,5 @@
 import type { Database as DatabaseType, Statement } from 'better-sqlite3';
-import type { SQLTableType, SQLClassListRow, SQLJunctonListRow, JunctionSides, JunctionList, ClassList, Property, DataType, ItemRelationSide, SQLApplicationWindow, ApplicationWindow, WorkspaceBlock, ClassData, ClassRow, ClassEdit, RelationEdit, PropertyEdit, MaxValues, PropertyType, RelationProperty, DataProperty } from './types.js';
+import type { SQLTableType, SQLClassListRow, SQLJunctonListRow, JunctionSides, JunctionList, ClassList, Property, DataType, ItemRelationSide, SQLApplicationWindow, ApplicationWindow, WorkspaceBlock, ClassData, ClassRow, ClassEdit, RelationEdit, PropertyEdit, MaxValues, PropertyType, RelationProperty, DataProperty, RelationEditValidSides } from './types.js';
 export default class Project {
     db: DatabaseType;
     run: {
@@ -49,7 +49,7 @@ export default class Project {
         property_edits?: PropertyEdit[];
         relationship_edits?: RelationEdit[];
     }): void;
-    consolidate_relationship_edits(relationship_edits: RelationEdit[]): RelationEdit[];
+    consolidate_relationship_edits(relationship_edits: RelationEdit[]): RelationEditValidSides[];
     action_delete_class(class_id: number): void;
     create_junction_table(sides: JunctionSides): number;
     transfer_connections(source: {
