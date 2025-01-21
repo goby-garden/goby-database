@@ -8,7 +8,7 @@
 
 ### Running notes
 
-#### 1/18/2025
+#### <span class="date">1/18/2025</span>
 
 Picking up on the reflection from the 16th: I’ve taken care of cases where transfers get queued for nonexistent targets, and general duplicate actions, by filtering those out in the consolidation step. The open question is what to do when someone deletes a property which was previously a target, and then adds their own new target within the same class. Normally when you delete a property which was a target, I queue the creation of a one-way relation to replace it, and transfer the connections from the previous two-way. 
 
@@ -17,13 +17,13 @@ It’s an open question whether to keep that behavior at all, since I could imag
 What I’d like to do though, since this problem is about validation with other relationship edits, is to address it in the consolidation function. And I think I have a way to accomplish that: when consolidating, if there are multiple creations/transfers involving the same pair of classes and one matching property, pick the one with the highest level of specificity, meaning privilege prop targets to class targets. 
 
 
-#### 1/16/2025
+#### <span class="date">1/16/2025</span>
 
 - I think I need to modify my logic for deleting or creating relations on the basis of classes/properties being deleted
     - e.g. if I delete a property, but rather than targeting the whole class, I already have a change queued to move the target to a different property. In that situation, it should honor what’s already in the queue instead of queing or overriding another transfer
     - also, what happens if the classes on either side of a relation are deleted? there may technically be available transfers individually, but they cancel each other out. I need to make sure the classes and properties in new_sides, exist, otherwise reject a transfer and just delete.
 
-#### 1/13/2025
+#### <span class="date">1/13/2025</span>
 
 Current to-do:
 - [x] refactor junctions so that:
@@ -65,7 +65,7 @@ How to handle this? What I’m thinking:
 
 
 
-#### 1/7/2025
+#### <span class="date">1/7/2025</span>
 
 - the current dilemma is an empty selection is showing up for `FROM` in the class retrieval SQL query, causing a syntax error. I’ve isolated the problem to be that in the sandbox file, I’m attempting to create a relation property without specifying targets, although the property implicitly has some targets, just based on the junctions I’m declaring in the same `action_edit_class_schema` call. So there are a few dimensions here:
 
