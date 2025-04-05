@@ -1,6 +1,6 @@
 {
   "name": "goby-database",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "description": "This will hold the core better-sqlite3-powered application for creating and modifying goby databases",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

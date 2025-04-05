@@ -876,7 +876,7 @@ export default class Project {
         };
     }
     action_config_window({ type, open, metadata = { pos: [null, null], size: [1000, 700] }, id }) {
-        if (id !== undefined) {
+        if (defined(id)) {
             this.run.update_window.run({
                 id,
                 open,

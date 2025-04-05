@@ -98,8 +98,8 @@ export default class Project {
     action_config_window({ type, open, metadata, id }: {
         type: ApplicationWindow["type"];
         open: ApplicationWindow["open"];
-        metadata: ApplicationWindow["metadata"];
-        id: number;
+        metadata?: ApplicationWindow["metadata"];
+        id?: number;
     }): number | undefined;
     create_workspace(open: ApplicationWindow["open"], metadata: ApplicationWindow["metadata"]): number;
     action_create_workspace_block({ workspace_id, thing_type, block_metadata, thing_id }: {
