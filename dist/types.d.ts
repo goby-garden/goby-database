@@ -153,7 +153,10 @@ export type ApplicationWindow = {
     id: number;
     type: string;
     open: BinaryBoolean;
-    metadata: {};
+    metadata: {
+        pos: [null, null] | [number, number];
+        size: [number, number];
+    };
 };
 export type ThingType = 'item' | 'class';
 export type BaseWorkspaceBlock = {

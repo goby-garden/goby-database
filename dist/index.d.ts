@@ -90,7 +90,7 @@ export default class Project {
         name: string;
         metadata: string;
     }): (DataProperty | RelationProperty);
-    retrieve_windows(): SQLApplicationWindow[];
+    retrieve_windows(): ApplicationWindow[];
     retrieve_workspace_contents(id: number): {
         blocks_parsed: WorkspaceBlock[];
         items: unknown[];

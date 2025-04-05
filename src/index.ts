@@ -1090,9 +1090,14 @@ export default class Project{
     }
 
     retrieve_windows(){
-        let windows=this.run.get_windows.all();
-        windows.map(a=>a.metadata=JSON.parse(a.metadata));
-        return windows;
+        const windows_raw=this.run.get_windows.all();
+        const windows_parsed:ApplicationWindow[]=windows_raw.map((w)=>{
+            return {
+                ...w,
+                metadata:JSON.parse(w.metadata)
+            }
+        })
+        return windows_parsed;
     }
 
     retrieve_workspace_contents(id:number){
