@@ -1122,10 +1122,10 @@ export default class Project{
     action_config_window({type,open,metadata={pos:[null,null], size:[1000,700]},id}:{
             type:ApplicationWindow["type"],
             open:ApplicationWindow["open"],
-            metadata:ApplicationWindow["metadata"],
-            id:number
+            metadata?:ApplicationWindow["metadata"],
+            id?:number
         }){
-        if(id!==undefined){
+        if(defined(id)){
             this.run.update_window.run({
                 id,
                 open,
