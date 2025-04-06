@@ -182,16 +182,17 @@ export type JunctionTable ={
 
 export type JunctionList =JunctionTable[];
 
+export type WindowType = 'home' | 'hopper' | 'workspace';
 
 export type SQLApplicationWindow ={
   id:number;
-  type:string;
+  type:WindowType;
   open:BinaryBoolean;
   metadata:string; // JSON string
 }
 export type ApplicationWindow ={
   id:number;
-  type:string;
+  type:WindowType;
   open:BinaryBoolean;
   metadata:{
     pos:[null,null] | [number,number];
