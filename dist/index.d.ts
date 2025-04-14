@@ -30,14 +30,14 @@ export default class Project {
     refresh_caches(caches: ('classlist' | 'items' | 'junctions')[]): void;
     create_table(type: SQLTableType, name: string | number, columns: string[]): void;
     action_create_class(name: string): number;
-    action_add_data_property({ class_id, name, data_type, max_values, create_column }: {
+    add_data_property({ class_id, name, data_type, max_values, create_column }: {
         class_id: number;
         name: string;
         data_type: DataType;
         max_values: MaxValues;
         create_column?: boolean;
     }): void;
-    action_add_relation_property(class_id: number, name: string, max_values: MaxValues): number;
+    add_relation_property(class_id: number, name: string, max_values: MaxValues): number;
     delete_property(class_id: number, prop_id: number): void;
     get_junctions(): {
         sides: JunctionSides;
@@ -67,15 +67,20 @@ export default class Project {
         class_data: ClassData;
     }): void;
     action_save(): void;
-    action_create_item_in_root({ type, value }: {
+    create_item_in_root({ type, value }: {
         type: string | null;
         value?: string;
     }): number;
-    action_delete_item_from_root(id: number): void;
+    delete_item_from_root(id: number): void;
     action_set_root_item_value(id: number, value: string): void;
+    lookup_class(class_id: number): ClassData;
     action_add_row(class_id: number): number;
     get_next_order(table_name: string): number;
-    action_make_relation(input_1: ItemRelationSide, input_2: ItemRelationSide): void;
+    action_set_property_values(class_id: number, item_id: number, changes: {
+        property_id: number;
+        value: any;
+    }[]): void;
+    action_make_relations(relations: [input_1: ItemRelationSide, input_2: ItemRelationSide][]): void;
     retrieve_class_items({ class_id, class_name, class_data }: {
         class_id: number;
         class_name?: string;

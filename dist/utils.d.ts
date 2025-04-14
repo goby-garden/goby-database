@@ -1,4 +1,4 @@
-import { JunctionSides, RelationshipSide, MaxValues, RelationshipSideBase, RelationEdit, RelationEditValidSides, ClassData, JunctionList } from "./types";
+import { JunctionSides, RelationshipSide, MaxValues, RelationshipSideBase, RelationEdit, RelationEditValidSides, ClassData, JunctionList } from "./types.js";
 export declare function defined<T>(v: T): v is NonNullable<T>;
 export declare function partial_relation_match(old_relation: JunctionSides, new_relation: JunctionSides): boolean;
 export declare function side_match(x: RelationshipSide, y: RelationshipSide): boolean;

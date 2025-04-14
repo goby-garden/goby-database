@@ -1,8 +1,20 @@
 {
   "name": "goby-database",
-  "version": "2.0.12",
+  "version": "2.1.14",
   "description": "This will hold the core better-sqlite3-powered application for creating and modifying goby databases",
   "main": "dist/index.js",
+  "files": [
+    "/dist",
+    "!dist/index.js.map",
+    "!dist/types.js.map",
+    "!dist/utils.js.map",
+    "!dist/sandbox.js",
+    "!dist/sandbox.d.ts",
+    "!dist/sandbox.js.map",
+    "!dist/unit-tests.js",
+    "!dist/unit-tests.d.ts",
+    "!dist/unit-tests.js.map"
+  ],
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
@@ -17,6 +29,8 @@
   "type": "module",
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
+    "@types/d3-dsv": "^3.0.7",
+    "d3-dsv": "^3.0.1",
     "typescript": "^5.7.2"
   }
 }

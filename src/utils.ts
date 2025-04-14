@@ -1,4 +1,4 @@
-import { JunctionSides, RelationshipSide,MaxValues,RelationshipSideBase, RelationEdit, RelationEditValidSides,ClassData,JunctionList } from "./types";
+import { JunctionSides, RelationshipSide,MaxValues,RelationshipSideBase, RelationEdit, RelationEditValidSides,ClassData,JunctionList } from "./types.js";
 
 
 export function defined<T>(v:T):v is NonNullable<T>{

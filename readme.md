@@ -2,6 +2,14 @@ I intend for this to be the core module Goby uses to represent and manipulate th
 
 Directory:
 * `notes.md` is my running notes doc for the project.
-* `index.js` will be main script (warning, lots of currently non-functional unfinished code)
-* `sandbox.js` will be a kind of test suite
-* `outdated_v0.json` is the first version I made of this module, used in the version of goby that I put together for my undergraduate thesis. I’m pulling a lot of the design of the new module from here, but there are a few big conceptual changes, particularly around how relation properties will work and be supported by junction tables in the back-end architecture.
+* `index.js` is the main script (warning, lots of currently non-functional unfinished code)
+* `sandbox.js` is an open testing and working environment
+
+
+### [WARNING: NOT YET STABLE]
+
+For anyone installing this, beware that it’s not ready/intended for general use yet!! I publish this package so that I can install it in [goby-interface](https://github.com/goby-garden/goby-interface) (I can’t use `npm link` because of some convoluted electron node issues), and frequently release tiny edits to accomodate my work there. 
+
+But anyway if you _are_ one of the ~150+ (???) people who have been installing this, I’d be very curious to hear what you’re doing or what interested you in the project :)
+
+

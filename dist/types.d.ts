@@ -112,7 +112,7 @@ export type RelationDefinition = {
     data_type?: never;
 };
 export type RelationProperty = BaseProperty & RelationDefinition;
-export type DataType = 'string' | 'resource' | 'number';
+export type DataType = 'string' | 'resource' | 'number' | 'boolean';
 export type DataDefinition = {
     type: 'data';
     data_type: DataType;

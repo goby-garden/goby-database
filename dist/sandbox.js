@@ -1,94 +1,384 @@
-import { readable_junctionlist } from './utils.js';
-console.log('--------------------------------------------------------');
-console.log('SANDBOX: running test...\n');
-import Project from './index.js';
-const project = new Project(':memory:');
-console.log('--------------------------------------------------------');
-console.log('SANDBOX: setting up book-author-script schema\n');
-project.action_edit_class_schema({
-    class_edits: [
-        { type: 'create', class_name: 'author' },
-        { type: 'create', class_name: 'book' },
-        { type: 'create', class_name: 'script' }
-    ],
-    property_edits: [
-        { type: 'create', class_name: 'author', prop_name: 'age', config: { type: 'data', data_type: 'number', max_values: 1 } },
-        { type: 'create', class_name: 'author', prop_name: 'works', config: { type: 'relation', max_values: null } },
-        { type: 'create', class_name: 'author', prop_name: 'books read', config: { type: 'relation', max_values: null } },
-        { type: 'create', class_name: 'book', prop_name: 'author', config: { type: 'relation', max_values: 1 } }
-    ],
-    relationship_edits: [
-        { type: 'create', sides: [{ class_name: 'author', prop_name: 'works' }, { class_name: 'book', prop_name: 'author' }] },
-        { type: 'create', sides: [{ class_name: 'author', prop_name: 'works' }, { class_name: 'script' }] },
-        { type: 'create', sides: [{ class_name: 'author', prop_name: 'books read' }, { class_name: 'book' }] }
-    ]
-});
-console.log(project.junction_cache.map(a => a.sides));
-console.log('--------------------------------------------------------');
-console.log('SANDBOX: adding items to classes\n');
-project.action_add_row(1);
-project.action_add_row(2);
-project.action_add_row(2);
-project.action_add_row(3);
-console.log('--------------------------------------------------------');
-console.log('SANDBOX: making connections between items in classes\n');
-project.action_make_relation({
-    class_id: 1,
-    prop_id: 3,
-    item_id: 1
-}, {
-    class_id: 2,
-    prop_id: 2,
-    item_id: 2
-});
-project.action_make_relation({
-    class_id: 1,
-    prop_id: 3,
-    item_id: 1
-}, {
-    class_id: 2,
-    prop_id: 2,
-    item_id: 3
-});
-project.action_make_relation({
-    class_id: 1,
-    prop_id: 3,
-    item_id: 1
-}, {
-    class_id: 3,
-    item_id: 4
-});
-project.action_make_relation({
-    class_id: 1,
-    prop_id: 4,
-    item_id: 1
-}, {
-    class_id: 2,
-    item_id: 2
-});
-project.refresh_caches(['classlist', 'items', 'junctions']);
-console.log('--------------------------------------------------------');
-console.log('SANDBOX: deleting author property in books\n');
-project.action_edit_class_schema({
-    property_edits: [
-        {
-            type: 'delete',
-            class_id: 2,
-            prop_id: 2
-        },
-        {
-            type: 'create',
-            class_id: 2,
-            prop_name: 'author2',
-            config: {
-                type: 'relation',
-                max_values: 1
+import { readable_junctionlist } from "./utils.js";
+import Project from "./index.js";
+import { tsvParse } from "d3-dsv";
+import { readFileSync, existsSync } from "node:fs";
+import { defined } from "./utils.js";
+const [, , arg] = process.argv;
+if (arg) {
+    log_step(`running ${arg} test...`, 1);
+    switch (arg) {
+        case "in-memory":
+            in_memory_tests();
+            break;
+        case "groceries":
+            create_groceries_project();
+            break;
+        case "default":
+            console.log(`no such test "${arg}" exists`);
+            break;
+    }
+}
+else {
+    console.log("no test provided");
+}
+function create_groceries_project() {
+    var _a, _b, _c, _d, _e, _f;
+    const write_to_db = false;
+    const d = new Date();
+    const d_string = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}_${d.getHours()}.${d.getMinutes()}`;
+    console.log("d_string", d_string);
+    const db_path = `test_data/db/groceries_${d_string}.db`;
+    if (!existsSync(db_path) || !write_to_db) {
+        const project = new Project(!write_to_db ? ":memory:" : db_path);
+        const tables = [
+            {
+                title: "Recipes",
+                tsv: "test_data/groceries-recipes.tsv",
+                tsv_parsed: [],
+                properties: [
+                    { name: "Name", type: "string", max_values: 1 },
+                    { name: "Ingredients", type: "relation", max_values: null },
+                    { name: "Nice-to-have", type: "relation", max_values: null },
+                    { name: "Recipe", type: "resource", max_values: 1 },
+                    { name: "Meal", type: "relation", max_values: null },
+                    { name: "Enjoyers", type: "relation", max_values: null },
+                ],
+            },
+            {
+                title: "Ingredients",
+                tsv: "test_data/groceries-ingredients.tsv",
+                tsv_parsed: [],
+                properties: [
+                    { name: "Name", type: "string", max_values: 1 },
+                    { name: "Stocked", type: "boolean", max_values: 1 },
+                    { name: "Used in", type: "relation", max_values: null },
+                    { name: "Snackable", type: "boolean", max_values: 1 },
+                    { name: "Category", type: "relation", max_values: 1 },
+                ],
+            },
+            {
+                title: "Ingredient categories",
+                tsv: "test_data/groceries-ingredient-categories.tsv",
+                tsv_parsed: [],
+                properties: [{ name: "Name", type: "string", max_values: 1 }],
+            },
+            {
+                title: "Meal types",
+                tsv: "test_data/groceries-meal-types.tsv",
+                properties: [{ name: "Name", type: "string", max_values: 1 }],
+            },
+            {
+                title: "Enjoyers",
+                tsv: "test_data/enjoyers.tsv",
+                tsv_parsed: [],
+                properties: [{ name: "Name", type: "string", max_values: 1 }],
+            },
+        ];
+        log_step('Creating class schema');
+        project.action_edit_class_schema({
+            class_edits: tables.map((t) => ({
+                type: "create",
+                class_name: t.title,
+            })),
+            property_edits: tables.flatMap((table) => {
+                return table.properties
+                    .filter((prop) => prop.name !== "Name")
+                    .map((prop) => {
+                    return {
+                        type: "create",
+                        prop_name: prop.name,
+                        class_name: table.title,
+                        config: prop.type == "relation"
+                            ? {
+                                type: "relation",
+                                max_values: prop.max_values,
+                            }
+                            : {
+                                type: "data",
+                                data_type: prop.type,
+                                max_values: prop.max_values,
+                            },
+                    };
+                });
+            }),
+            relationship_edits: [
+                {
+                    type: "create",
+                    sides: [
+                        { class_name: "Recipes", prop_name: "Ingredients" },
+                        { class_name: "Ingredients", prop_name: "Used in" },
+                    ],
+                },
+                {
+                    type: "create",
+                    sides: [
+                        { class_name: "Recipes", prop_name: "Ingredients" },
+                        { class_name: "Recipes" },
+                    ],
+                },
+                {
+                    type: "create",
+                    sides: [
+                        { class_name: "Recipes", prop_name: "Nice-to-have" },
+                        { class_name: "Ingredients" },
+                    ],
+                },
+                {
+                    type: "create",
+                    sides: [
+                        { class_name: "Recipes", prop_name: "Nice-to-have" },
+                        { class_name: "Recipes" },
+                    ],
+                },
+                {
+                    type: "create",
+                    sides: [
+                        { class_name: "Recipes", prop_name: "Meal" },
+                        { class_name: "Meal types" },
+                    ],
+                },
+                {
+                    type: "create",
+                    sides: [
+                        { class_name: "Ingredients", prop_name: "Category" },
+                        { class_name: "Ingredient categories" },
+                    ],
+                },
+                {
+                    type: "create",
+                    sides: [
+                        { class_name: "Recipes", prop_name: "Enjoyers" },
+                        { class_name: "Enjoyers" },
+                    ],
+                }
+            ],
+        });
+        const classes = project.class_cache;
+        log_step('Populating classes from table row data');
+        for (let table of tables) {
+            const class_data = classes.find((c) => c.name == table.title);
+            table.class_data = class_data;
+            if (table.tsv && class_data) {
+                const class_id = class_data.id;
+                const data_cols = table.properties
+                    .filter((p) => p.type !== "relation")
+                    .map(({ name }) => {
+                    const prop = class_data.properties.find((p) => p.name == name);
+                    if (!prop)
+                        throw Error("Could not find property matching this name");
+                    return {
+                        property_id: prop.id,
+                        name,
+                    };
+                });
+                const tsv = readFileSync(table.tsv, "utf8");
+                const rows = tsvParse(tsv);
+                table.tsv_parsed = rows;
+                for (let row of rows) {
+                    const item_id = project.action_add_row(class_id);
+                    const changes = data_cols.map(({ name, property_id }) => ({
+                        property_id,
+                        value: row[name] == "FALSE"
+                            ? false
+                            : row[name] == "TRUE"
+                                ? true
+                                : row[name],
+                    }));
+                    project.action_set_property_values(class_id, item_id, changes);
+                }
             }
         }
-    ],
-    relationship_edits: [
-        { type: 'create', sides: [{ class_id: 1, prop_id: 3 }, { class_id: 2, prop_name: 'author2' }] }
-    ]
-});
-console.log(readable_junctionlist(project.junction_cache, project.class_cache));
+        log_step("Looping through tables to make relations...");
+        const ingredients = project.class_cache.find((cls) => cls.name == "Ingredients");
+        const enjoyers = project.class_cache.find((cls) => cls.name == "Enjoyers");
+        const meals = project.class_cache.find((cls) => cls.name == "Meal types");
+        const ingredient_type = project.class_cache.find((cls) => cls.name == "Ingredient categories");
+        const targets = {
+            Ingredients: {
+                class: ingredients,
+                prop: (_a = ingredients === null || ingredients === void 0 ? void 0 : ingredients.properties) === null || _a === void 0 ? void 0 : _a.find((a) => a.name == "Used in"),
+            },
+            "Nice-to-have": { class: ingredients },
+            Enjoyers: { class: enjoyers },
+            Meal: { class: meals },
+            Category: { class: ingredient_type },
+        };
+        const relation_queue = [];
+        for (let { properties, tsv_parsed, class_data } of tables) {
+            if (tsv_parsed && defined(class_data)) {
+                const class_id = class_data.id;
+                for (let prop of properties.filter((p) => p.type == "relation")) {
+                    const prop_id = (_b = class_data.properties.find((a) => a.name == prop.name)) === null || _b === void 0 ? void 0 : _b.id;
+                    const target = targets[prop.name];
+                    if (target && target.class && defined(prop_id)) {
+                        console.log('\nprop:', `${class_data.name} / ${prop.name}`);
+                        console.log('target:', `${target.class.name} ${((_c = target.prop) === null || _c === void 0 ? void 0 : _c.name) ? '/ ' + ((_d = target.prop) === null || _d === void 0 ? void 0 : _d.name) : ''}`);
+                        const target_obj = Object.assign({ class_id: target.class.id }, (target.prop ? { prop_id: target.prop.id } : {}));
+                        for (let row of tsv_parsed) {
+                            const item = class_data.items.find((i) => i.user_Name == row.Name);
+                            if (item) {
+                                const selected_strings = ((_f = (_e = row[prop.name]) === null || _e === void 0 ? void 0 : _e.split(",")) === null || _f === void 0 ? void 0 : _f.map((a) => a.trim())) ||
+                                    [];
+                                const selected = target.class.items.filter((a) => selected_strings.includes(a.user_Name));
+                                for (let sel of selected) {
+                                    relation_queue.push([{ class_id, prop_id, item_id: item.system_id }, Object.assign(Object.assign({}, target_obj), { item_id: sel.system_id })]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        project.action_make_relations(relation_queue);
+        console.log(project.class_cache[0].items);
+    }
+}
+function in_memory_tests() {
+    const project = new Project(":memory:");
+    log_step("setting up book-author-script schema");
+    project.action_edit_class_schema({
+        class_edits: [
+            { type: "create", class_name: "author" },
+            { type: "create", class_name: "book" },
+            { type: "create", class_name: "script" },
+        ],
+        property_edits: [
+            {
+                type: "create",
+                class_name: "author",
+                prop_name: "age",
+                config: { type: "data", data_type: "number", max_values: 1 },
+            },
+            {
+                type: "create",
+                class_name: "author",
+                prop_name: "works",
+                config: { type: "relation", max_values: null },
+            },
+            {
+                type: "create",
+                class_name: "author",
+                prop_name: "books read",
+                config: { type: "relation", max_values: null },
+            },
+            {
+                type: "create",
+                class_name: "book",
+                prop_name: "author",
+                config: { type: "relation", max_values: 1 },
+            },
+        ],
+        relationship_edits: [
+            {
+                type: "create",
+                sides: [
+                    { class_name: "author", prop_name: "works" },
+                    { class_name: "book", prop_name: "author" },
+                ],
+            },
+            {
+                type: "create",
+                sides: [
+                    { class_name: "author", prop_name: "works" },
+                    { class_name: "script" },
+                ],
+            },
+            {
+                type: "create",
+                sides: [
+                    { class_name: "author", prop_name: "books read" },
+                    { class_name: "book" },
+                ],
+            },
+        ],
+    });
+    console.log(project.junction_cache.map((a) => a.sides));
+    log_step("adding items to classes");
+    project.action_add_row(1);
+    project.action_add_row(2);
+    project.action_add_row(2);
+    project.action_add_row(3);
+    log_step("making connections between items in classes");
+    project.action_make_relations([
+        [
+            {
+                class_id: 1,
+                prop_id: 3,
+                item_id: 1,
+            },
+            {
+                class_id: 2,
+                prop_id: 2,
+                item_id: 2,
+            }
+        ],
+        [{
+                class_id: 1,
+                prop_id: 3,
+                item_id: 1,
+            },
+            {
+                class_id: 2,
+                prop_id: 2,
+                item_id: 3,
+            }],
+        [{
+                class_id: 1,
+                prop_id: 3,
+                item_id: 1,
+            },
+            {
+                class_id: 3,
+                item_id: 4,
+            }],
+        [{
+                class_id: 1,
+                prop_id: 4,
+                item_id: 1,
+            },
+            {
+                class_id: 2,
+                item_id: 2,
+            }]
+    ]);
+    project.refresh_caches(["classlist", "items", "junctions"]);
+    log_step("deleting author property in books");
+    project.action_edit_class_schema({
+        property_edits: [
+            {
+                type: "delete",
+                class_id: 2,
+                prop_id: 2,
+            },
+            {
+                type: "create",
+                class_id: 2,
+                prop_name: "author2",
+                config: {
+                    type: "relation",
+                    max_values: 1,
+                },
+            },
+        ],
+        relationship_edits: [
+            {
+                type: "create",
+                sides: [
+                    { class_id: 1, prop_id: 3 },
+                    { class_id: 2, prop_name: "author2" },
+                ],
+            },
+        ],
+    });
+    console.log(readable_junctionlist(project.junction_cache, project.class_cache));
+}
+function log_step(step_text, level = 2) {
+    if (level == 1) {
+        console.log("\n\n========================================================");
+    }
+    else {
+        console.log("\n--------------------------------------------------------");
+    }
+    console.log(`SANDBOX: ${step_text}`);
+}
 //# sourceMappingURL=sandbox.js.map

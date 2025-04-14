@@ -8,6 +8,13 @@
 
 ### Running notes
 
+
+#### <span class="date">4/13/2025</span>
+
+I’m working on creating a sample “groceries” project to develop the interface with, using a dataset I assembled of our typical recipes and grocery list. As ever, working with test data is challenging my assumptions about what the editor should be able to accomodate: I have two properties in my recipes table, “ingredients”, and “nice-to-have”, which both reference my “ingredients” table. Then in the ingredients table, I have a ”used by” property, which you would expect to be linked to _both_ of these recipe props. However, this isn’t allowed by my schema editing function (which happily my error-catching prevented), because although it would be mostly doable structurally, it would be difficult to resolve in the interface. I.e. when you opened the dropdown to select recipes for "used by", there would be no default way of specifying or knowing if it would make a relation with the "ingredients" or the "nice-to-have" property in Recipes. 
+
+I think I’m fine with this limitation for now, though in the future it could be worth enabling it and thinking about how it would be resolved by the interface. Maybe it could be based on priority, like when creating the relationships I would set it so that when selecting from the ingredients side, it would always reflect the changes in the ingredients prop rather than used by. I would also need to account for multiple properties in a row selecting the same item, in which case I (probably?) wouldn’t want to list a single item twice.
+
 #### <span class="date">1/18/2025</span>
 
 Picking up on the reflection from the 16th: I’ve taken care of cases where transfers get queued for nonexistent targets, and general duplicate actions, by filtering those out in the consolidation step. The open question is what to do when someone deletes a property which was previously a target, and then adds their own new target within the same class. Normally when you delete a property which was a target, I queue the creation of a one-way relation to replace it, and transfer the connections from the previous two-way. 

@@ -1,4 +1,4 @@
-import { JunctionSides } from "./types";
+import { JunctionSides } from "./types.js";
 import { partial_relation_match } from "./utils.js";
 
 testRelationMatching();

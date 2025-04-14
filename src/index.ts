@@ -30,6 +30,9 @@ import type {
 } from './types.js';
 
 const text_data_types=['string','resource'];
+
+const integer_data_types=['boolean'];
+
 const real_data_types=['number'];
 
 export default class Project{
@@ -216,7 +219,7 @@ export default class Project{
         let columns=[
             'system_id INTEGER UNIQUE',
             'system_order REAL',
-            'user_name TEXT',
+            'user_Name TEXT',
             `FOREIGN KEY(system_id) REFERENCES system_root(id)`
         ]; 
 
@@ -249,7 +252,7 @@ export default class Project{
         this.refresh_caches(['classlist']);
 
         // add an entry in the property table for the default "name" property. 
-        this.action_add_data_property({class_id,name:'name',data_type:'string',max_values:1,create_column:false})
+        this.add_data_property({class_id,name:'Name',data_type:'string',max_values:1,create_column:false})
 
 
         return class_id;
@@ -257,7 +260,7 @@ export default class Project{
     }
 
 
-    action_add_data_property({
+    add_data_property({
         class_id,
         name,
         data_type,
@@ -287,8 +290,7 @@ export default class Project{
 
         // 2. Add column to class table ------------------------------------------------
         if(create_column){
-            let class_data=this.class_cache.find(a=>a.id==class_id);
-            if(class_data == undefined) throw new Error('Cannot find class in class list.');
+            const class_data=this.lookup_class(class_id);
             let class_name=class_data.name;
 
             let sql_data_type='';
@@ -298,6 +300,8 @@ export default class Project{
                 sql_data_type='TEXT';
             }else if(real_data_types.includes(data_type)){
                 sql_data_type='REAL';
+            }else if (integer_data_types.includes(data_type)){
+                sql_data_type='INTEGER';
             }
             
             //create property in table
@@ -308,7 +312,7 @@ export default class Project{
         
     }
 
-    action_add_relation_property(class_id:number,name:string,max_values:MaxValues){
+    add_relation_property(class_id:number,name:string,max_values:MaxValues){
 
         let property_table=`class_${class_id}_properties`;
 
@@ -453,7 +457,7 @@ export default class Project{
 
                         // register the property
                         if(prop_edit.config.type == 'relation'){
-                            const prop_id=this.action_add_relation_property(
+                            const prop_id=this.add_relation_property(
                                 prop_edit.class_id,
                                 prop_edit.prop_name,
                                 prop_edit.config.max_values
@@ -477,7 +481,7 @@ export default class Project{
                             }
                         }else if(prop_edit.config.type == 'data'){
                             // if it's a data prop, it just has to be registered in the class table and metadata
-                            this.action_add_data_property({
+                            this.add_data_property({
                                 class_id:prop_edit.class_id,
                                 name:prop_edit.prop_name,
                                 data_type:prop_edit.config.data_type,
@@ -872,7 +876,7 @@ export default class Project{
         this.db.close();
     }
 
-    action_create_item_in_root({type=null,value=''}:{type:string|null,value?:string}){
+    create_item_in_root({type=null,value=''}:{type:string|null,value?:string}){
         // this.db.prepare('INSERT INTO system_root VALUES (null)').run();
         this.run.create_item.run({type,value});
         let id=this.db.prepare<[],{id:number}>('SELECT id FROM system_root ORDER BY id DESC').get()?.id;
@@ -880,7 +884,7 @@ export default class Project{
         return id;
     }
 
-    action_delete_item_from_root(id:number){
+    delete_item_from_root(id:number){
         this.db.prepare(`DELETE FROM system_root WHERE id = ${id}`).run();
     }
     
@@ -888,13 +892,18 @@ export default class Project{
         this.db.prepare(`UPDATE system_root set value = ? WHERE id = ?`).run(value,id);
     }
 
-    action_add_row(class_id:number){
-        let class_data=this.class_cache.find(a=>a.id==class_id);
+    lookup_class(class_id:number):ClassData{
+        const class_data=this.class_cache.find(a=>a.id==class_id);
         if(class_data == undefined) throw new Error('Cannot find class in class list.');
+        return class_data;
+    }
+
+    action_add_row(class_id:number){
+        const class_data=this.lookup_class(class_id);
         let class_name=class_data.name;
 
         //first add new row to root and get id
-        const root_id=this.action_create_item_in_root({type:'class_'+class_id});
+        const root_id=this.create_item_in_root({type:'class_'+class_id});
         
         
         //get the last item in class table order and use it to get the order for the new item
@@ -902,6 +911,7 @@ export default class Project{
    
         this.db.prepare(`INSERT INTO [class_${class_name}] (system_id, system_order) VALUES (${root_id},${new_order})`).run();
 
+        this.refresh_caches(['items']);
         return root_id;
     }
 
@@ -911,36 +921,119 @@ export default class Project{
         return new_order;
     }
 
-    action_make_relation(input_1:ItemRelationSide,input_2:ItemRelationSide){
+    // NOTE: seems like there should be a way to pair down "value:any" in params, maybe at least make it one of a few value types
+    action_set_property_values(class_id:number,item_id:number,changes:{property_id:number,value:any}[]){
+        const class_data=this.lookup_class(class_id);
+        const sql_column_inserts=[];
+
+        for(let change of changes){
+            const prop_data=class_data.properties.find((p)=>p.id==change.property_id);
+            if(prop_data&&prop_data.type=='data'){
+                // const data_type=prop_data.data_type;
+                const cell_value=validate(change.value,prop_data.data_type,prop_data.max_values);
+                if(cell_value.valid){
+                    sql_column_inserts.push({
+                        column_name:`[user_${prop_data.name}]`,
+                        cell_value:cell_value.output
+                    })
+                }else{
+                    console.log(`Did not modify ${prop_data.name} for item ${item_id}: ${cell_value.message}`);
+                }
+
+            }else if(prop_data&&prop_data.type=='relation'){
+                console.log('haven’t added handling for relation props here yet')
+            }
+        }
+
+
+        const params=sql_column_inserts.map((a)=>a.cell_value);
+        const set_statements=sql_column_inserts.map((p)=>`${p.column_name} = ?`).join(',');
+        
+        const insert_statement=`UPDATE [class_${class_data.name}] SET ${set_statements} WHERE system_id=${item_id}`;
+
+
+        this.db.prepare(insert_statement).run(params);
+        this.refresh_caches(['items']);
+
+        function validate(input:any,data_type:DataType,max_values:MaxValues):{valid:true,output:string | number} | {valid:false,message:string}{
+            const multiple=max_values==null||max_values>1;
+            const values=multiple?input:[input];
+            if(!Array.isArray(values)){
+                return {valid:false,message:'Expecting array, got single value'};
+            }
+            
+            const validated_values=[];
+
+            for(let value of values){
+                if(real_data_types.includes(data_type) || integer_data_types.includes(data_type)){
+                    if(data_type=='boolean'){
+                        if(typeof value=='boolean' || [0,1].includes(value)){
+                            validated_values.push(+value);
+                        }else{
+                            return {valid:false,message:`Expecting boolean or binary integer, got "${value}" (${typeof value})`};
+                        }
+                    }else if(typeof value=='number'){
+                        validated_values.push(value);
+                    }else{
+                        return {valid:false,message:`Expecting number, got "${value}" (${typeof value})`};
+                    }
+                }else if(text_data_types.includes(data_type)){
+                    // NOTE: could come back to validate resource as links/filepaths later, but leaving unopinionated for now
+                    if(typeof value=='string'){
+                        validated_values.push(value);
+                    }else{
+                        return {valid:false,message:`Expecting string, got "${value}" (${typeof value})`};
+                    }
+                }
+            }
+
+            const output=multiple?JSON.stringify(validated_values):validated_values[0];
+
+            return {
+                valid:true,
+                output
+            }
+        }
+        
+    }
+
+    
+
+    action_make_relations(relations:[input_1:ItemRelationSide,input_2:ItemRelationSide][]){
         // NOTE: changes to make to this in the future:
         //  - for input readability, allow class_name and prop_name as input options, assuming they’re enforced as unique, and use them to look up IDs
         //  - enforce max_values here
 
-
-        let column_names={
-            input_1:junction_col_name(input_1.class_id,input_1.prop_id),
-            input_2:junction_col_name(input_2.class_id,input_2.prop_id)
+        for(let [input_1,input_2] of relations){
+            let column_names={
+                input_1:junction_col_name(input_1.class_id,input_1.prop_id),
+                input_2:junction_col_name(input_2.class_id,input_2.prop_id)
+            }
+            let junction_id=this.junction_cache.find(j=>full_relation_match(j.sides,[input_1,input_2]))?.id;
+    
+            if(junction_id){
+                this.db.prepare(`
+                    INSERT INTO junction_${junction_id} 
+                    ("${column_names.input_1}", "${column_names.input_2}") 
+                    VALUES (${input_1.item_id},${input_2.item_id})
+                `).run();
+            }else{
+                throw Error('Something went wrong - junction table for relationship not found')
+            }
         }
-        let junction_id=this.junction_cache.find(j=>full_relation_match(j.sides,[input_1,input_2]))?.id;
 
-        if(junction_id){
-            this.db.prepare(`
-                INSERT INTO junction_${junction_id} 
-                ("${column_names.input_1}", "${column_names.input_2}") 
-                VALUES (${input_1.item_id},${input_2.item_id})
-            `).run();
-        }else{
-            throw Error('Something went wrong - junction table for relationship not found')
-        }
+        this.refresh_caches(['items']);
 
+        
+
+        
         // NOTE: should this trigger a refresh to items?
     }
 
 
     retrieve_class_items({class_id,class_name,class_data}:{class_id:number,class_name?:string,class_data?:ClassData}):ClassRow[]{
         if(class_name==undefined || class_data == undefined){
-            class_data=this.class_cache.find(a=>a.id==class_id);
-            if(class_data == undefined) throw new Error('Cannot find class in class list.');
+            class_data=this.lookup_class(class_id);
             class_name=class_data.name;
         };
 
@@ -1209,7 +1302,7 @@ export default class Project{
                     value:item_value,
                     type:item_type
                 } = thing_data;
-                thing_id=this.action_create_item_in_root({type:item_type,value:item_value});
+                thing_id=this.create_item_in_root({type:item_type,value:item_value});
             break;
             // add cases for class and anything else in the future
         }
@@ -1234,7 +1327,7 @@ export default class Project{
         this.action_remove_workspace_block({workspace_id,block_id});
         switch(thing_type){
             case 'item':
-                this.action_delete_item_from_root(thing_id);
+                this.delete_item_from_root(thing_id);
             break;
         }
     }
