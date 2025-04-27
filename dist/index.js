@@ -942,16 +942,19 @@ export default class Project {
         let blocks = blocks_sql.map(a => (Object.assign(Object.assign({}, a), { metadata: JSON.parse(a.metadata) })));
         // for(let block of blocks) block.metadata=JSON.parse(block.metadata);
         // get any relevant root items
-        let items = this.db.prepare(`SELECT system_root.* 
+        const items = this.db.prepare(`SELECT system_root.* 
             FROM system_root 
             LEFT JOIN workspace_${id} 
             ON system_root.id = workspace_${id}.thing_id
             WHERE workspace_${id}.type = 'item';
         `).all();
-        // get any relevant classes (going to hold off from this for now)
+        // get any relevant classes
+        const classes = this.class_cache.filter((cls) => blocks.find((block) => { block.thing_type == 'class' && block.thing_id == cls.id; }));
+        // NOTE: could possibly add class items as well in the future
         return {
             blocks,
-            items
+            items,
+            classes
         };
     }
     action_config_window({ type, open, metadata = { pos: [null, null], size: [1000, 700] }, id }) {

@@ -99,6 +99,7 @@ export default class Project {
     retrieve_workspace_contents(id: number): {
         blocks: WorkspaceBlock[];
         items: unknown[];
+        classes: ClassData[];
     };
     action_config_window({ type, open, metadata, id }: {
         type: ApplicationWindow["type"];
