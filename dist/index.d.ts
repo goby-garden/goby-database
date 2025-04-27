@@ -97,7 +97,7 @@ export default class Project {
     }): (DataProperty | RelationProperty);
     retrieve_windows(): ApplicationWindow[];
     retrieve_workspace_contents(id: number): {
-        blocks_parsed: WorkspaceBlock[];
+        blocks: WorkspaceBlock[];
         items: unknown[];
     };
     action_config_window({ type, open, metadata, id }: {

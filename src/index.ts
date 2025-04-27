@@ -1195,8 +1195,8 @@ export default class Project{
 
     retrieve_workspace_contents(id:number){
         // get the workspace table
-        let blocks=this.db.prepare<[],SQLWorkspaceBlockRow>(`SELECT * FROM workspace_${id}`).all();
-        let blocks_parsed:WorkspaceBlock[]=blocks.map(a=>({
+        let blocks_sql=this.db.prepare<[],SQLWorkspaceBlockRow>(`SELECT * FROM workspace_${id}`).all();
+        let blocks:WorkspaceBlock[]=blocks_sql.map(a=>({
             ...a,
             metadata:JSON.parse(a.metadata)
         }))
@@ -1212,7 +1212,7 @@ export default class Project{
         // get any relevant classes (going to hold off from this for now)
         
         return {
-            blocks_parsed,
+            blocks,
             items
         }
     }

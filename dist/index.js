@@ -938,8 +938,8 @@ export default class Project {
     }
     retrieve_workspace_contents(id) {
         // get the workspace table
-        let blocks = this.db.prepare(`SELECT * FROM workspace_${id}`).all();
-        let blocks_parsed = blocks.map(a => (Object.assign(Object.assign({}, a), { metadata: JSON.parse(a.metadata) })));
+        let blocks_sql = this.db.prepare(`SELECT * FROM workspace_${id}`).all();
+        let blocks = blocks_sql.map(a => (Object.assign(Object.assign({}, a), { metadata: JSON.parse(a.metadata) })));
         // for(let block of blocks) block.metadata=JSON.parse(block.metadata);
         // get any relevant root items
         let items = this.db.prepare(`SELECT system_root.* 
@@ -950,7 +950,7 @@ export default class Project {
         `).all();
         // get any relevant classes (going to hold off from this for now)
         return {
-            blocks_parsed,
+            blocks,
             items
         };
     }

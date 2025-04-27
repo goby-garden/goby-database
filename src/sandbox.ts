@@ -25,7 +25,7 @@ if (arg) {
 }
 
 function create_groceries_project() {
-  const write_to_db = false;
+  const write_to_db = true;
   const d = new Date();
   const d_string = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}_${d.getHours()}.${d.getMinutes()}`;
   console.log("d_string", d_string);
@@ -280,6 +280,17 @@ function create_groceries_project() {
     project.action_make_relations(relation_queue);
 
     console.log(project.class_cache[0].items)
+
+    log_step('creating workspace with ingredient class')
+    const workspace_id=project.action_config_window({type:'workspace',open:1});
+    if(project.class_cache.length>0&&workspace_id){
+      project.action_create_workspace_block({
+        workspace_id,
+        thing_type:'class',
+        thing_id:project.class_cache[0].id,
+        block_metadata:{}
+      })
+    }
   }
 }
 
