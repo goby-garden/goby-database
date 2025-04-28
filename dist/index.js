@@ -949,7 +949,7 @@ export default class Project {
             WHERE workspace_${id}.type = 'item';
         `).all();
         // get any relevant classes
-        const classes = this.class_cache.filter((cls) => blocks.find((block) => { block.thing_type == 'class' && block.thing_id == cls.id; }));
+        const classes = this.class_cache.filter((cls) => blocks.some((block) => block.type == 'class' && block.thing_id == cls.id));
         // NOTE: could possibly add class items as well in the future
         return {
             blocks,
@@ -988,11 +988,11 @@ export default class Project {
         ]);
         return id;
     }
-    action_create_workspace_block({ workspace_id, thing_type, block_metadata, thing_id }) {
+    action_create_workspace_block({ workspace_id, type, block_metadata, thing_id }) {
         var _a;
         // should return block id
         this.db.prepare(`INSERT INTO workspace_${workspace_id}(type,metadata,thing_id) VALUES (@type,@metadata,@thing_id)`).run({
-            type: thing_type,
+            type: type,
             metadata: JSON.stringify(block_metadata),
             thing_id
         });
@@ -1005,10 +1005,10 @@ export default class Project {
         this.db.prepare(`DELETE FROM workspace_${workspace_id} WHERE block_id = ${block_id}`).run();
     }
     ;
-    action_create_and_add_to_workspace({ workspace_id, thing_type, block_metadata, thing_data }) {
+    action_create_and_add_to_workspace({ workspace_id, type, block_metadata, thing_data }) {
         let thing_id;
         // thing creation
-        switch (thing_type) {
+        switch (type) {
             case 'item':
                 let { value: item_value, type: item_type } = thing_data;
                 thing_id = this.create_item_in_root({ type: item_type, value: item_value });
@@ -1019,7 +1019,7 @@ export default class Project {
             throw Error('Something went wrong saving an item from a workspace');
         let block_id = this.action_create_workspace_block({
             workspace_id,
-            thing_type,
+            type,
             block_metadata,
             thing_id
         });
@@ -1029,9 +1029,9 @@ export default class Project {
         };
         // should return the block id and item id
     }
-    action_remove_from_workspace_and_delete(workspace_id, block_id, thing_type, thing_id) {
+    action_remove_from_workspace_and_delete(workspace_id, block_id, type, thing_id) {
         this.action_remove_workspace_block({ workspace_id, block_id });
-        switch (thing_type) {
+        switch (type) {
             case 'item':
                 this.delete_item_from_root(thing_id);
                 break;

@@ -236,10 +236,12 @@ function create_groceries_project() {
         if (project.class_cache.length > 0 && workspace_id) {
             project.action_create_workspace_block({
                 workspace_id,
-                thing_type: 'class',
+                type: 'class',
                 thing_id: project.class_cache[0].id,
                 block_metadata: {}
             });
+            const workspace_contents = project.retrieve_workspace_contents(workspace_id);
+            console.log('workspace_contents', workspace_contents);
         }
     }
 }

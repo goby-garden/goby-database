@@ -108,9 +108,9 @@ export default class Project {
         id?: number;
     }): number | undefined;
     create_workspace(open: ApplicationWindow["open"], metadata: ApplicationWindow["metadata"]): number;
-    action_create_workspace_block({ workspace_id, thing_type, block_metadata, thing_id }: {
+    action_create_workspace_block({ workspace_id, type, block_metadata, thing_id }: {
         workspace_id: ApplicationWindow["id"];
-        thing_type: WorkspaceBlock["thing_type"];
+        type: WorkspaceBlock["type"];
         block_metadata: WorkspaceBlock["metadata"];
         thing_id: WorkspaceBlock["thing_id"];
     }): number;
@@ -118,14 +118,14 @@ export default class Project {
         workspace_id: number;
         block_id: number;
     }): void;
-    action_create_and_add_to_workspace({ workspace_id, thing_type, block_metadata, thing_data }: {
+    action_create_and_add_to_workspace({ workspace_id, type, block_metadata, thing_data }: {
         workspace_id: number;
-        thing_type: WorkspaceBlock["thing_type"];
+        type: WorkspaceBlock["type"];
         block_metadata: WorkspaceBlock["metadata"];
         thing_data: any;
     }): {
         thing_id: number;
         block_id: number;
     };
-    action_remove_from_workspace_and_delete(workspace_id: number, block_id: number, thing_type: WorkspaceBlock["thing_type"], thing_id: number): void;
+    action_remove_from_workspace_and_delete(workspace_id: number, block_id: number, type: WorkspaceBlock["type"], thing_id: number): void;
 }

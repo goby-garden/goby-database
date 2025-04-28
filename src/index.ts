@@ -49,6 +49,7 @@ export default class Project{
 
     class_cache:ClassList=[];
     item_cache:{
+        // NOTE: add pagination to this
         class_id:number,
         items:ClassRow[]
     }[]=[]
@@ -182,6 +183,7 @@ export default class Project{
         if(caches.includes('items')){
             let refreshed_items=[];
             for(let class_data of this.class_cache){
+                // NOTE: add pagination to this
                 let items=this.retrieve_class_items({class_id:class_data.id});
                 refreshed_items.push({
                     class_id:class_data.id,
@@ -1211,7 +1213,7 @@ export default class Project{
         `).all();
 
         // get any relevant classes
-        const classes=this.class_cache.filter((cls)=>blocks.find((block)=>{block.thing_type=='class'&&block.thing_id==cls.id}))
+        const classes=this.class_cache.filter((cls)=>blocks.some((block)=>block.type=='class'&&block.thing_id==cls.id))
         // NOTE: could possibly add class items as well in the future
 
         return {
@@ -1265,15 +1267,15 @@ export default class Project{
         return id;
     }
 
-    action_create_workspace_block({workspace_id,thing_type,block_metadata,thing_id}:{
+    action_create_workspace_block({workspace_id,type,block_metadata,thing_id}:{
         workspace_id:ApplicationWindow["id"],
-        thing_type:WorkspaceBlock["thing_type"],
+        type:WorkspaceBlock["type"],
         block_metadata:WorkspaceBlock["metadata"],
         thing_id:WorkspaceBlock["thing_id"]
     }){
         // should return block id
         this.db.prepare<{type:string,metadata:string,thing_id:number}>(`INSERT INTO workspace_${workspace_id}(type,metadata,thing_id) VALUES (@type,@metadata,@thing_id)`).run({
-            type:thing_type,
+            type:type,
             metadata:JSON.stringify(block_metadata),
             thing_id
         });
@@ -1289,18 +1291,18 @@ export default class Project{
 
     action_create_and_add_to_workspace({
         workspace_id,
-        thing_type,
+        type,
         block_metadata,
         thing_data
     }:{
         workspace_id:number,
-        thing_type:WorkspaceBlock["thing_type"],
+        type:WorkspaceBlock["type"],
         block_metadata:WorkspaceBlock["metadata"],
         thing_data:any // NOTE: fix this in the future when I define class and standalone item types
     }){
         let thing_id;
         // thing creation
-        switch(thing_type){
+        switch(type){
             case 'item':
                 let {
                     value:item_value,
@@ -1315,7 +1317,7 @@ export default class Project{
 
         let block_id=this.action_create_workspace_block({
             workspace_id,
-            thing_type,
+            type,
             block_metadata,
             thing_id
         })
@@ -1327,9 +1329,9 @@ export default class Project{
         // should return the block id and item id
     }
 
-    action_remove_from_workspace_and_delete(workspace_id:number,block_id:number,thing_type:WorkspaceBlock["thing_type"],thing_id:number){
+    action_remove_from_workspace_and_delete(workspace_id:number,block_id:number,type:WorkspaceBlock["type"],thing_id:number){
         this.action_remove_workspace_block({workspace_id,block_id});
-        switch(thing_type){
+        switch(type){
             case 'item':
                 this.delete_item_from_root(thing_id);
             break;
