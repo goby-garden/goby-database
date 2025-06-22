@@ -81,10 +81,11 @@ export default class Project {
         value: any;
     }[]): void;
     action_make_relations(relations: [input_1: ItemRelationSide, input_2: ItemRelationSide][]): void;
-    retrieve_class_items({ class_id, class_name, class_data }: {
+    retrieve_class_items({ class_id, class_name, class_data, slim }: {
         class_id: number;
         class_name?: string;
         class_data?: ClassData;
+        slim?: boolean;
     }): ClassRow[];
     retrieve_all_classes(): ClassData[];
     parse_sql_prop(class_id: number, sql_prop: {

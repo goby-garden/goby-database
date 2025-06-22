@@ -230,6 +230,10 @@ export default class Project{
         const class_meta:ClassMetadata={
             style:{
                 color: '#b5ffd5'
+            },
+            label:{
+                // TODO: build functionality to change label property in the future
+                properties:[1]
             }
         };
 
@@ -1033,7 +1037,7 @@ export default class Project{
     }
 
 
-    retrieve_class_items({class_id,class_name,class_data}:{class_id:number,class_name?:string,class_data?:ClassData}):ClassRow[]{
+    retrieve_class_items({class_id,class_name,class_data,slim=false}:{class_id:number,class_name?:string,class_data?:ClassData,slim?:boolean}):ClassRow[]{
         if(class_name==undefined || class_data == undefined){
             class_data=this.lookup_class(class_id);
             class_name=class_data.name;
@@ -1052,58 +1056,82 @@ export default class Project{
 
         let relation_properties=class_data.properties.filter(a=>a.type=='relation');
 
-        for (let prop of relation_properties){
-            const target_selects=[];
-            let property_junction_column_name=junction_col_name(class_id,prop.id);
-  
-            
+        if(!slim){
+            for (let prop of relation_properties){
+                const target_selects=[];
+                let property_junction_column_name=junction_col_name(class_id,prop.id);
       
-            if(prop.relation_targets.length>0){
-                for(let i = 0; i < prop.relation_targets.length; i++){
- 
-                    // find the side that does not match both the class and prop IDs
-                    let target=prop.relation_targets[i]
-                    if(target){
-                        let target_junction_column_name=junction_col_name(target.class_id,target.prop_id);
-                        let junction_id=target.junction_id;
-                        let target_select=`SELECT "${property_junction_column_name}", json_object('class_id',${target.class_id},'id',"${target_junction_column_name}") AS target_data FROM junction_${junction_id}`
-                        target_selects.push(target_select);
-                    }else{
-                        throw Error('Something went wrong trying to retrieve relationship data')
+                
+          
+                if(prop.relation_targets.length>0){
+                    for(let i = 0; i < prop.relation_targets.length; i++){
+     
+                        // find the side that does not match both the class and prop IDs
+                        let target=prop.relation_targets[i];
+                        const target_class=this.class_cache.find((a)=>a.id==target?.class_id);
+                        if(target&&target_class){
+                            let target_junction_column_name=junction_col_name(target.class_id,target.prop_id);
+                            
+                            // NOTE: as mentioned elsewhere, possibly allow multiple label props
+                            const target_label_id=target_class?.metadata?.label?.properties[0];
+                            const target_label=target_class?.properties.find((p)=>p.id==target_label_id);
+                            const label_sql_string=target_label?`,'user_${target_label.name}',target_class."user_${target_label.name}"`:'';
+    
+                            let junction_id=target.junction_id;
+                            let target_select=`
+                            SELECT 
+                                "${property_junction_column_name}", 
+                                json_object('class_id',${target.class_id},'id',junction."${target_junction_column_name}"${label_sql_string}) AS target_data 
+                                FROM junction_${junction_id} AS junction
+                                LEFT JOIN "class_${target_class?.name}" AS target_class ON junction."${target_junction_column_name}" =  target_class.system_id
+                            `;
+    
+                            target_selects.push(target_select);
+                        }else{
+                            throw Error('Something went wrong trying to retrieve relationship data')
+                        }
+                        
                     }
                     
+                    // uses built-in aggregate json function instead of group_concat craziness
+                    const cte=`[${prop.id}_cte] AS (
+                        SELECT "${property_junction_column_name}", json_group_array( json(target_data) ) AS [user_${prop.name}]
+                        FROM 
+                        (
+                            ${target_selects.join(` 
+                            UNION 
+                            `)}
+                        )
+                        GROUP BY "${property_junction_column_name}"
+                    )`
+                    
+                    cte_strings.push(cte);
+                    relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
+                    cte_joins.push(`LEFT JOIN [${prop.id}_cte] ON [${prop.id}_cte]."${property_junction_column_name}" = ${class_string}.system_id`)
+                }else{
+                    relation_selections.push(`'[]' AS [user_${prop.name}]`);
                 }
                 
-                // uses built-in aggregate json function instead of group_concat craziness
-                const cte=`[${prop.id}_cte] AS (
-                    SELECT "${property_junction_column_name}", json_group_array( json(target_data) ) AS [user_${prop.name}]
-                    FROM 
-                    (
-                        ${target_selects.join(` 
-                        UNION 
-                        `)}
-                    )
-                    GROUP BY "${property_junction_column_name}"
-                )`
-                
-                cte_strings.push(cte);
-                relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
-                cte_joins.push(`LEFT JOIN [${prop.id}_cte] ON [${prop.id}_cte]."${property_junction_column_name}" = ${class_string}.system_id`)
-            }else{
-                relation_selections.push(`'[]' AS [user_${prop.name}]`);
+    
             }
-            
-
         }
 
         let orderby=`ORDER BY ${class_string}.system_order`;
+
+        let table_selection = `[class_${class_name}].*`;
+        if(slim){
+            const label_prop_ids=class_data.metadata.label?.properties ?? []; 
+            const label_props=class_data.properties.filter((p)=>label_prop_ids.includes(p.id));
+            const label_prop_sql_string=label_props.map((p)=>`[user_${p.name}]`).join(',');
+            table_selection=`system_id,system_order,${label_prop_sql_string}`;
+        }
 
         let comma_break=`,
             `
 
         let query=`
             ${cte_strings.length>0?"WITH "+cte_strings.join(comma_break):''}
-            SELECT [class_${class_name}].* ${relation_selections.length>0?', '+relation_selections.join(`, `):''}
+            SELECT ${table_selection} ${relation_selections.length>0?', '+relation_selections.join(`, `):''}
             FROM [class_${class_name}]
             ${cte_joins.join(' ')}
             ${orderby}`;

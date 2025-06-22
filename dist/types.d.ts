@@ -96,6 +96,9 @@ export type ClassMetadata = {
     style: {
         color?: string;
     };
+    label?: {
+        properties: number[];
+    };
 };
 export type PropertyType = 'data' | 'relation';
 export type BinaryBoolean = 0 | 1;

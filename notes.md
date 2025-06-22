@@ -9,6 +9,22 @@
 ### Running notes
 
 
+
+#### <span class="date">6/22/2025</span>
+
+Today I’m working on rendering the selection fields in the interface (we’ll see how far I’m able to get!). I realized that my class item retrieval function doesn’t return any information about relation property values beyond the class and item IDs of selected rows, i.e. the minimal information to identify them. My first thought was that I could add a helper function that just returns all of the possible options for a relation prop, since that will be needed anyway for the dropdown fields. But I still have a dream of this library being useful as a standalone API to interact with goby databases, and to that end I think that the item retrieval function should probably be a tad more robust in its return value. Not that it should return the full item, but I think it should have enough information to display a list of selected items. 
+
+This gets me to a feature which I’ve envisioned including for a long time: a ”label” attribute, indicating which property of a class should be used as the signifier for its items in more abbreviated displays. 
+
+- One thing that I will have to sort out, and recall dealing with in the initial implementation of all this, is what happens when the label value is empty for an item? How should it display as an ”option”? I may have a more robust answer to this later on, but for now I think I will just filter these out in the option list. In the “selected” option display, maybe I will let these remain, but just show the item ID.
+
+- Another question is where to store the information about which property is the label. One possibility is storing it in the property table as an SQLite column on the property itself. This appeals to me because I’ve been trying to move away from encoding data in stringified JSON. I could also store it as a foreign key column in the class registry, e.g. `label_property` (actually, I suppose I couldn’t do it as a foreign key because properties have their own per class tables). Lastly I could store it as a `label` key in the metadata JSON for the class. Despite this not having the advantages of normalization and possible SQLite-native validation, I think this is actually an attribute that I may want to be mutable. For example in the future I could want to add the ability to concatenate multiple properties into a label, so that people can add things like emoji/icons and possibly even image thumbnails. So in conclusion of this thought, I’m inclined to go this latter direction.
+
+> Note to self upon exploring the foreign key idea: with any current and future foreign keys, I should consider how to handle deleting referenced items, given SQLite’s [default behavior and possibly useful behavior options](https://www.sqlite.org/foreignkeys.html#fk_actions).
+
+Aside from this change to the return of relation property, I will also need to change the item retrieval function to support retrieving all the options, as I mentioned. For that I want to add a paremeter which basically pares down the return value to just item ID and label.
+
+
 #### <span class="date">4/13/2025</span>
 
 I’m working on creating a sample “groceries” project to develop the interface with, using a dataset I assembled of our typical recipes and grocery list. As ever, working with test data is challenging my assumptions about what the editor should be able to accomodate: I have two properties in my recipes table, “ingredients”, and “nice-to-have”, which both reference my “ingredients” table. Then in the ingredients table, I have a ”used by” property, which you would expect to be linked to _both_ of these recipe props. However, this isn’t allowed by my schema editing function (which happily my error-catching prevented), because although it would be mostly doable structurally, it would be difficult to resolve in the interface. I.e. when you opened the dropdown to select recipes for "used by", there would be no default way of specifying or knowing if it would make a relation with the "ingredients" or the "nice-to-have" property in Recipes. 
@@ -400,6 +416,21 @@ Here is what I’m thinking for the table structure:
     * For class design, I can take advantage of SQLite transactions to provide a brute force way of letting you discard all changes and roll back to a saved state. Maybe the interface can give you some way of “committing” changes, or a way of entering “transaction mode”
 
 - Another thing to consider/look into: is there a way I could integrate this with git somehow, and have a sort of brute-force undo-redo powered by rolling back changes at the raw data level? Reminds me of that thing that happens when you open an indesign file and get a second, temporary file. Could I somehow track changes while you work and live commit them? 
+
+---
+
+### Commands
+
+With my new typescript and package export setup I have some new commands for development, which maybe I ought to record here:
+
+- `npm run build`: runs the typescript compiler on all the files in `src`, adding them to `dist`. 
+- `npm run test [test name]`: this is my system for putting all my tests in one file, `sandbox.ts`, and passing in a string parameter with the name of the test to run. My tests so far:
+
+    - `in-memory`: some general tests of goby’s capabilities in an in-memory database 
+    - `groceries`: this generates a timestamped project file with recipe and ingredient classes. I’ve been using this test and exporting the file to use as the foundation for my interface development
+    - `unit-relation-matching`: my first “unit test”, verifying that one of my more complex utility functions returns expected outputs in a variety of scenarios.
+
+
 
 ---
 

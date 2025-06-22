@@ -2,7 +2,7 @@ import { readable_junctionlist } from "./utils.js";
 import Project from "./index.js";
 import { tsvParse } from "d3-dsv";
 import { readFileSync, existsSync } from "node:fs";
-import { defined } from "./utils.js";
+import { defined, partial_relation_match } from "./utils.js";
 const [, , arg] = process.argv;
 if (arg) {
     log_step(`running ${arg} test...`, 1);
@@ -13,7 +13,13 @@ if (arg) {
         case "groceries":
             create_groceries_project();
             break;
-        case "default":
+        case "grocery-queries":
+            grocery_queries();
+            break;
+        case "unit-relation-matching":
+            test_relation_matching();
+            break;
+        default:
             console.log(`no such test "${arg}" exists`);
             break;
     }
@@ -21,12 +27,11 @@ if (arg) {
 else {
     console.log("no test provided");
 }
-function create_groceries_project() {
+function create_groceries_project(log_only = false) {
     var _a, _b, _c, _d, _e, _f;
-    const write_to_db = true;
+    const write_to_db = !log_only;
     const d = new Date();
-    const d_string = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}_${d.getHours()}.${d.getMinutes()}`;
-    console.log("d_string", d_string);
+    const d_string = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}_${d.getHours()}.${d.getMinutes()}`;
     const db_path = `test_data/db/groceries_${d_string}.db`;
     if (!existsSync(db_path) || !write_to_db) {
         const project = new Project(!write_to_db ? ":memory:" : db_path);
@@ -230,7 +235,7 @@ function create_groceries_project() {
             }
         }
         project.action_make_relations(relation_queue);
-        console.log(project.class_cache[0].items);
+        console.log('\nrecipes item 1:', project.class_cache[0].items[0]);
         log_step('creating workspace with ingredient class');
         const workspace_id = project.action_config_window({ type: 'workspace', open: 1 });
         if (project.class_cache.length > 0 && workspace_id) {
@@ -243,6 +248,15 @@ function create_groceries_project() {
             const workspace_contents = project.retrieve_workspace_contents(workspace_id);
             console.log('workspace_contents', workspace_contents);
         }
+        return project;
+    }
+    return null;
+}
+function grocery_queries() {
+    const project = create_groceries_project(true);
+    if (project) {
+        const slim_return = project.retrieve_class_items({ class_id: 1, slim: true });
+        console.log('slim_return', slim_return);
     }
 }
 function in_memory_tests() {
@@ -392,5 +406,84 @@ function log_step(step_text, level = 2) {
         console.log("\n--------------------------------------------------------");
     }
     console.log(`SANDBOX: ${step_text}`);
+}
+function test_relation_matching() {
+    const test1_old = [
+        { class_id: 1, prop_id: 100 },
+        { class_id: 2, prop_id: 200 },
+    ];
+    const test1_new = [
+        { class_id: 1, prop_id: 100 },
+        { class_id: 2, prop_id: 300 },
+    ];
+    const test2_old = [
+        { class_id: 1, prop_id: 100 },
+        { class_id: 2, prop_id: 200 },
+    ];
+    const test2_new = [
+        { class_id: 1, prop_id: 300 },
+        { class_id: 2, prop_id: 400 },
+    ];
+    // Case 3: Non-matching classes
+    const test3_old = [
+        { class_id: 1, prop_id: 100 },
+        { class_id: 2, prop_id: 200 },
+    ];
+    const test3_new = [
+        { class_id: 3, prop_id: 100 },
+        { class_id: 4, prop_id: 200 },
+    ];
+    const test4a_old = [
+        { class_id: 1, prop_id: 100 },
+        { class_id: 1, prop_id: 200 },
+    ];
+    const test4a_new = [
+        { class_id: 1, prop_id: 100 },
+        { class_id: 1, prop_id: 300 },
+    ];
+    // Case 4b: Same class on both sides with no matching properties
+    const test4b_old = [
+        { class_id: 1, prop_id: 100 },
+        { class_id: 1, prop_id: 200 },
+    ];
+    const test4b_new = [
+        { class_id: 1, prop_id: 300 },
+        { class_id: 1, prop_id: 400 },
+    ];
+    // Case 5: Reversed order matching
+    const test5_old = [
+        { class_id: 1, prop_id: 100 },
+        { class_id: 2, prop_id: 200 },
+    ];
+    const test5_new = [
+        { class_id: 2, prop_id: 200 },
+        { class_id: 1, prop_id: 300 },
+    ];
+    // Case 6: Undefined property IDs
+    const test6_old = [
+        { class_id: 1 },
+        { class_id: 2, prop_id: 200 },
+    ];
+    const test6_new = [
+        { class_id: 1, prop_id: 100 },
+        { class_id: 2 },
+    ];
+    // Case 7: Undefined property IDs on same side
+    const test7_old = [
+        { class_id: 1 },
+        { class_id: 2, prop_id: 200 },
+    ];
+    const test7_new = [
+        { class_id: 1 },
+        { class_id: 2, prop_id: 100 },
+    ];
+    console.log("same class, at least one prop (expect true)", partial_relation_match(test1_new, test1_old));
+    console.log("same class, no props  (expect false)", partial_relation_match(test2_old, test2_new));
+    console.log("different classes (expect false)", partial_relation_match(test3_old, test3_new));
+    console.log("only one class, matching prop (expect true)", partial_relation_match(test4a_new, test4a_old));
+    console.log("only one class, no props (expect false)", partial_relation_match(test4b_old, test4b_new));
+    console.log("reversed class order, prop matching (expect true)", partial_relation_match(test5_new, test5_old));
+    console.log("undefined prop (expect false)", partial_relation_match(test6_old, test6_new));
+    console.log("undefined prop 2 (expect false)", partial_relation_match(test7_old, test7_new));
 }
 //# sourceMappingURL=sandbox.js.map

@@ -116,6 +116,11 @@ export type ClassEdit = ClassCreate | ClassDelete | ClassModify;
 export type ClassMetadata ={
   style:{
     color?:string
+  },
+  // NOTE: maybe elaborate on this in the future, e.g. allow concatenation of multiple properties or other customization
+  label?:{
+    // property IDs used to form label
+    properties:number[]
   }
 }
 
@@ -200,7 +205,7 @@ export type ApplicationWindow ={
   }; 
 }
 
-// maybe elaborate this in the future
+// NOTE: maybe elaborate this in the future
 export type ThingType = 'item' | 'class';
 
 export type BaseWorkspaceBlock = {
