@@ -1,5 +1,5 @@
 import type { Database as DatabaseType, Statement } from 'better-sqlite3';
-import type { SQLTableType, SQLClassListRow, SQLJunctonListRow, JunctionSides, JunctionList, ClassList, Property, DataType, ItemRelationSide, SQLApplicationWindow, ApplicationWindow, WorkspaceBlock, ClassData, ClassRow, ClassEdit, RelationEdit, PropertyEdit, MaxValues, PropertyType, RelationProperty, DataProperty, RelationEditValidSides } from './types.js';
+import type { SQLTableType, SQLClassListRow, SQLJunctonListRow, JunctionSides, JunctionList, ClassList, Property, DataType, ItemRelationSide, SQLApplicationWindow, ApplicationWindow, WorkspaceBlock, ClassData, ClassEdit, RelationEdit, PropertyEdit, MaxValues, PropertyType, RelationProperty, DataProperty, RelationEditValidSides, ItemPagination, PaginatedItems } from './types.js';
 export default class Project {
     db: DatabaseType;
     run: {
@@ -19,10 +19,6 @@ export default class Project {
         }>;
     };
     class_cache: ClassList;
-    item_cache: {
-        class_id: number;
-        items: ClassRow[];
-    }[];
     junction_cache: JunctionList;
     constructor(source: string);
     get_latest_table_row_id(table_name: string): number | null;
@@ -81,13 +77,19 @@ export default class Project {
         value: any;
     }[]): void;
     action_make_relations(relations: [input_1: ItemRelationSide, input_2: ItemRelationSide][]): void;
-    retrieve_class_items({ class_id, class_name, class_data, slim }: {
+    retrieve_class_items({ class_id, class_name, class_data, pagination }: {
         class_id: number;
         class_name?: string;
         class_data?: ClassData;
-        slim?: boolean;
-    }): ClassRow[];
-    retrieve_all_classes(): ClassData[];
+        pagination?: ItemPagination;
+    }): PaginatedItems;
+    retrieve_all_classes(with_items?: {
+        all?: ItemPagination;
+        by_class?: {
+            class_id: number;
+            pagination: ItemPagination;
+        }[];
+    }): ClassData[];
     parse_sql_prop(class_id: number, sql_prop: {
         id: number;
         type: PropertyType;

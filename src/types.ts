@@ -168,11 +168,21 @@ export type ClassData ={
   id:number;
   name:string;
   metadata:ClassMetadata;
-  items:ClassRow[];
+  items:PaginatedItems;
   properties:Property[];
 };
 
 export type ClassList =ClassData[];
+
+export type ItemPagination = {
+  page_size?:number | null;
+  page_range?:[start:number,end?:number];
+  property_range?:number[] | 'slim' | 'all';
+}
+
+export type PaginatedItems = ItemPagination & {
+  loaded:ClassRow[]
+}
 
 
 

@@ -8,7 +8,18 @@
 
 ### Running notes
 
+#### <span class="date">6/23/2025</span>
 
+Following my last goby-interface note, I’m removing all references to the item cache, which is pretty easy because it wasn’t really doing anything yet. 
+
+The thing I will need to do in its stead now is modify my class/workspace retrieval functions to manually pull the items for the classes I need, since I was previously relying on automatic caching filling in the items when I fetched them. So a few steps (to do in reverse order):
+
+- [ ] change `retrieve_workspace_contents` to retrieve all class metadata instead of a subset, and do it with `retrieve_all_classes` instead of the cache.
+- [x] modify `retrieve_all_classes` to take a parameter which specifies which items to fetch for each class (if any). Then use `retrieve_class_items` to populate the items when requested. This will be the foundation for pagination. But for now I can just set the range to `null` so it fetches all the class items when requested.
+- [x] modify `retrieve_class_items` to accept a pagination range (or `null` for all items as mentioned, and later on I can actually implement the pagination).
+- [x] modify the `items` property of the `ClassData` type to record the pagination state in addition to the actual array of items.
+   - should include an attribute for the range of items fetched (page size, page #, sort order), and also a attribute for the columns/properties, which can either be a list of IDs or a generalized string setting like "all" or "slim"
+   - this will obviously have trickle effects to the interface. luckily with typescript, all the errors that this change generates should bubble up as type errors in my code editor.
 
 #### <span class="date">6/22/2025</span>
 
@@ -22,7 +33,7 @@ This gets me to a feature which I’ve envisioned including for a long time: a �
 
 > Note to self upon exploring the foreign key idea: with any current and future foreign keys, I should consider how to handle deleting referenced items, given SQLite’s [default behavior and possibly useful behavior options](https://www.sqlite.org/foreignkeys.html#fk_actions).
 
-Aside from this change to the return of relation property, I will also need to change the item retrieval function to support retrieving all the options, as I mentioned. For that I want to add a paremeter which basically pares down the return value to just item ID and label.
+Aside from this change to the return of relation properties, I will also need to change the item retrieval function to support retrieving all the options, as I mentioned. For that I want to add a paremeter which basically pares down the return value to just item ID and label.
 
 
 #### <span class="date">4/13/2025</span>

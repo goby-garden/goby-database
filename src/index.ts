@@ -26,7 +26,9 @@ import type {
     PropertyType,
     RelationProperty,
     DataProperty,
-    RelationEditValidSides
+    RelationEditValidSides,
+    ItemPagination,
+    PaginatedItems
 } from './types.js';
 
 const text_data_types=['string','resource'];
@@ -48,11 +50,6 @@ export default class Project{
     };
 
     class_cache:ClassList=[];
-    item_cache:{
-        // NOTE: add pagination to this
-        class_id:number,
-        items:ClassRow[]
-    }[]=[]
     junction_cache:JunctionList=[];
 
     constructor(source:string){
@@ -107,7 +104,7 @@ export default class Project{
 
 
 
-        this.refresh_caches(['classlist','items','junctions']);
+        this.refresh_caches(['classlist','junctions']);
 
         
         // commenting this out until I figure out my transaction / one-step-undo functionality
@@ -178,20 +175,6 @@ export default class Project{
     refresh_caches(caches:('classlist' | 'items' | 'junctions')[]){
         if(caches.includes('classlist')){
             this.class_cache=this.retrieve_all_classes();
-        }
-        
-        if(caches.includes('items')){
-            let refreshed_items=[];
-            for(let class_data of this.class_cache){
-                // NOTE: add pagination to this
-                let items=this.retrieve_class_items({class_id:class_data.id});
-                refreshed_items.push({
-                    class_id:class_data.id,
-                    items
-                })
-                class_data.items=items;
-            }
-            this.item_cache=refreshed_items;
         }
         
         if(caches.includes('junctions')){
@@ -917,7 +900,6 @@ export default class Project{
    
         this.db.prepare(`INSERT INTO [class_${class_name}] (system_id, system_order) VALUES (${root_id},${new_order})`).run();
 
-        this.refresh_caches(['items']);
         return root_id;
     }
 
@@ -959,7 +941,6 @@ export default class Project{
 
 
         this.db.prepare(insert_statement).run(params);
-        this.refresh_caches(['items']);
 
         function validate(input:any,data_type:DataType,max_values:MaxValues):{valid:true,output:string | number} | {valid:false,message:string}{
             const multiple=max_values==null||max_values>1;
@@ -1028,16 +1009,25 @@ export default class Project{
             }
         }
 
-        this.refresh_caches(['items']);
-
-        
-
         
         // NOTE: should this trigger a refresh to items?
     }
 
 
-    retrieve_class_items({class_id,class_name,class_data,slim=false}:{class_id:number,class_name?:string,class_data?:ClassData,slim?:boolean}):ClassRow[]{
+    // MARKER: modify item retrieval
+    retrieve_class_items({class_id,class_name,class_data,pagination={}}:{class_id:number,class_name?:string,class_data?:ClassData,pagination?:ItemPagination}):PaginatedItems{
+        const pagination_defaults:ItemPagination={
+            page_size:null,
+            property_range:'all'
+        }
+
+        pagination = {
+            ...pagination_defaults,
+            ...pagination
+        }
+
+        const slim=pagination.property_range=='slim';
+        
         if(class_name==undefined || class_data == undefined){
             class_data=this.lookup_class(class_id);
             class_name=class_data.name;
@@ -1045,14 +1035,16 @@ export default class Project{
 
         const class_string=`[class_${class_name}]`;
 
-        // //joined+added at beginning of the query, built from relations
+        // joined+added at beginning of the query, built from relations
         const cte_strings=[];
 
-        // //joined+added near the end of the query, built from relations
+        // joined+added near the end of the query, built from relations
         const cte_joins=[];
 
-        // //joined+added between SELECT and FROM, built from relations
+        // joined+added between SELECT and FROM, built from relations
         const relation_selections=[];
+
+        // NOTE: in the future, if a property_range is defined, first filter class_data.properties by those IDs
 
         let relation_properties=class_data.properties.filter(a=>a.type=='relation');
 
@@ -1150,22 +1142,48 @@ export default class Project{
                   }
             }
         });
-        return items;
+        return {
+            ...pagination,
+            loaded:items
+        };
     }
 
-    retrieve_all_classes():ClassData[]{
+    // with_items:{
+    //     class_id:number;
+    //     pagination:ItemPagination
+    // }[] = []
+
+    
+    // MARKER: modify item retrieval
+    retrieve_all_classes(
+        with_items:{
+            all?:ItemPagination;
+            by_class?:{
+                class_id:number;
+                pagination:ItemPagination
+            }[]
+        } = {}
+    ):ClassData[]{
         const classes_data=this.run.get_all_classes.all();
         return classes_data.map(({id,name,metadata})=>{
-            let existing_items=this.item_cache.find((itemlist)=>itemlist.class_id==id);
 
             let properties_sql=this.db.prepare<[],{id:number,type:PropertyType,data_type:'string'| null,max_values:MaxValues,name:string,metadata:string}>(`SELECT * FROM class_${id}_properties`).all() || [];
             
             let properties=properties_sql.map((sql_prop)=>this.parse_sql_prop(id,sql_prop));
 
+            const pagination=with_items.all ?? with_items.by_class?.find(((a)=>a.class_id==id))?.pagination;
+            const items = pagination ? this.retrieve_class_items({
+                class_id:id,
+                class_name:name,
+                pagination
+            }) : {
+                loaded:[]
+            }
+
             return {
                 id,
                 name,
-                items:existing_items?.items ?? [],
+                items,
                 properties,
                 metadata:JSON.parse(metadata)
             };
@@ -1240,9 +1258,13 @@ export default class Project{
             WHERE workspace_${id}.type = 'item';
         `).all();
 
+
+        // MARKER: modify item retrieval
         // get any relevant classes
         const classes=this.class_cache.filter((cls)=>blocks.some((block)=>block.type=='class'&&block.thing_id==cls.id))
         // NOTE: could possibly add class items as well in the future
+            
+
 
         return {
             blocks,
@@ -1381,3 +1403,12 @@ export default class Project{
     //  }else{
     //      return false;
     //  }
+
+
+    type WithItems = {
+        all?:ItemPagination;
+        by_class?:{
+            class_id:number;
+            pagination:ItemPagination
+        }[]
+    }

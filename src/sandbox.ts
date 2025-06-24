@@ -174,7 +174,9 @@ function create_groceries_project(log_only = false) {
           }
       ],
     });
-    const classes = project.class_cache;
+
+    // gets the class metadata but no items by defuault
+    let classes = project.retrieve_all_classes();
 
     log_step('Populating classes from table row data')
     for (let table of tables) {
@@ -218,13 +220,18 @@ function create_groceries_project(log_only = false) {
 
 
     log_step("Looping through tables to make relations...");
-    
-    const ingredients = project.class_cache.find(
+    // re-fetches classes, this time including all the items
+    classes=project.retrieve_all_classes({
+      all:{page_size:null}
+    })
+
+
+    const ingredients = classes.find(
       (cls) => cls.name == "Ingredients"
     );
-    const enjoyers = project.class_cache.find((cls) => cls.name == "Enjoyers");
-    const meals = project.class_cache.find((cls) => cls.name == "Meal types");
-    const ingredient_type = project.class_cache.find(
+    const enjoyers = classes.find((cls) => cls.name == "Enjoyers");
+    const meals = classes.find((cls) => cls.name == "Meal types");
+    const ingredient_type = classes.find(
       (cls) => cls.name == "Ingredient categories"
     );
 
@@ -246,7 +253,11 @@ function create_groceries_project(log_only = false) {
     for (let { properties, tsv_parsed, class_data } of tables) {
       
       if (tsv_parsed && defined(class_data)) {
+        
         const class_id = class_data.id;
+        class_data.items=project.retrieve_class_items({
+          class_id
+        })
         for (let prop of properties.filter((p) => p.type == "relation")) {
           
 
@@ -264,13 +275,14 @@ function create_groceries_project(log_only = false) {
               ...(target.prop ? { prop_id: target.prop.id } : {}),
             };
 
+
             for (let row of tsv_parsed) {
-              const item = class_data.items.find((i) => i.user_Name == row.Name);
+              const item = class_data.items.loaded.find((i) => i.user_Name == row.Name);
               if (item) {
                 const selected_strings =
                   row[prop.name]?.split(",")?.map((a: string) => a.trim()) ||
                   [];
-                const selected = target.class.items.filter((a) =>
+                const selected = target.class.items.loaded.filter((a) =>
                   selected_strings.includes(a.user_Name)
                 );
                 for (let sel of selected) {
@@ -285,19 +297,23 @@ function create_groceries_project(log_only = false) {
 
     project.action_make_relations(relation_queue);
 
-    console.log('\nrecipes item 1:',project.class_cache[0].items[0])
+    classes=project.retrieve_all_classes({
+      all:{page_size:null}
+    })
+
+    console.log('\nrecipes item 1:',classes[0].items.loaded[0])
 
     log_step('creating workspace with ingredient class')
     const workspace_id=project.action_config_window({type:'workspace',open:1});
-    if(project.class_cache.length>0&&workspace_id){
+    if(classes.length>0&&workspace_id){
       project.action_create_workspace_block({
         workspace_id,
         type:'class',
-        thing_id:project.class_cache[0].id,
+        thing_id:classes[0].id,
         block_metadata:{}
       })
       const workspace_contents=project.retrieve_workspace_contents(workspace_id);
-      console.log('workspace_contents',workspace_contents)
+      console.log('workspace_contents',workspace_contents.classes[0])
     }
 
     return project;
@@ -309,7 +325,7 @@ function create_groceries_project(log_only = false) {
 function grocery_queries(){
     const project=create_groceries_project(true);
     if(project){
-      const slim_return = project.retrieve_class_items({class_id:1,slim:true});
+      const slim_return = project.retrieve_class_items({class_id:1,pagination:{property_range:'slim'}});
       console.log('slim_return',slim_return)
     }
 }
