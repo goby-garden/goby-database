@@ -233,7 +233,6 @@ function create_groceries_project(log_only = false) {
                                 const selected_strings = ((_f = (_e = row[prop.name]) === null || _e === void 0 ? void 0 : _e.split(",")) === null || _f === void 0 ? void 0 : _f.map((a) => a.trim())) ||
                                     [];
                                 const selected = target.class.items.loaded.filter((a) => selected_strings.includes(a.user_Name));
-                                console.log('item', item, 'selected', selected);
                                 for (let sel of selected) {
                                     relation_queue.push([{ class_id, prop_id, item_id: item.system_id }, Object.assign(Object.assign({}, target_obj), { item_id: sel.system_id })]);
                                 }
