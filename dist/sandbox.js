@@ -28,7 +28,7 @@ else {
     console.log("no test provided");
 }
 function create_groceries_project(log_only = false) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g;
     const write_to_db = !log_only;
     const d = new Date();
     const d_string = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}_${d.getHours()}.${d.getMinutes()}`;
@@ -199,19 +199,22 @@ function create_groceries_project(log_only = false) {
         classes = project.retrieve_all_classes({
             all_items: { page_size: null }
         });
+        const recipes = classes.find((cls) => cls.name == "Recipes");
         const ingredients = classes.find((cls) => cls.name == "Ingredients");
         const enjoyers = classes.find((cls) => cls.name == "Enjoyers");
         const meals = classes.find((cls) => cls.name == "Meal types");
         const ingredient_type = classes.find((cls) => cls.name == "Ingredient categories");
         const targets = {
-            Ingredients: {
-                class: ingredients,
-                prop: (_a = ingredients === null || ingredients === void 0 ? void 0 : ingredients.properties) === null || _a === void 0 ? void 0 : _a.find((a) => a.name == "Used in"),
-            },
-            "Nice-to-have": { class: ingredients },
-            Enjoyers: { class: enjoyers },
-            Meal: { class: meals },
-            Category: { class: ingredient_type },
+            Ingredients: [{
+                    class: ingredients,
+                    prop: (_a = ingredients === null || ingredients === void 0 ? void 0 : ingredients.properties) === null || _a === void 0 ? void 0 : _a.find((a) => a.name == "Used in"),
+                }, {
+                    class: recipes
+                }],
+            "Nice-to-have": [{ class: ingredients }],
+            Enjoyers: [{ class: enjoyers }],
+            Meal: [{ class: meals }],
+            Category: [{ class: ingredient_type }],
         };
         const relation_queue = [];
         for (let { properties, tsv_parsed, class_data } of tables) {
@@ -222,19 +225,22 @@ function create_groceries_project(log_only = false) {
                 });
                 for (let prop of properties.filter((p) => p.type == "relation")) {
                     const prop_id = (_b = class_data.properties.find((a) => a.name == prop.name)) === null || _b === void 0 ? void 0 : _b.id;
-                    const target = targets[prop.name];
-                    if (target && target.class && defined(prop_id)) {
-                        console.log('\nprop:', `${class_data.name} / ${prop.name}`);
-                        console.log('target:', `${target.class.name} ${((_c = target.prop) === null || _c === void 0 ? void 0 : _c.name) ? '/ ' + ((_d = target.prop) === null || _d === void 0 ? void 0 : _d.name) : ''}`);
-                        const target_obj = Object.assign({ class_id: target.class.id }, (target.prop ? { prop_id: target.prop.id } : {}));
-                        for (let row of tsv_parsed) {
-                            const item = class_data.items.loaded.find((i) => i.user_Name == row.Name);
-                            if (item) {
-                                const selected_strings = ((_f = (_e = row[prop.name]) === null || _e === void 0 ? void 0 : _e.split(",")) === null || _f === void 0 ? void 0 : _f.map((a) => a.trim())) ||
-                                    [];
-                                const selected = target.class.items.loaded.filter((a) => selected_strings.includes(a.user_Name));
-                                for (let sel of selected) {
-                                    relation_queue.push([{ class_id, prop_id, item_id: item.system_id }, Object.assign(Object.assign({}, target_obj), { item_id: sel.system_id })]);
+                    const target_classes = targets[prop.name] || [];
+                    console.log('target_classes', target_classes);
+                    for (let target of target_classes) {
+                        if (target && target.class && defined(prop_id)) {
+                            console.log('\nprop:', `${class_data.name} / ${prop.name}`);
+                            console.log('target:', `${target.class.name} ${((_c = target.prop) === null || _c === void 0 ? void 0 : _c.name) ? '/ ' + ((_d = target.prop) === null || _d === void 0 ? void 0 : _d.name) : ''}`);
+                            const target_obj = Object.assign({ class_id: target.class.id }, (target.prop ? { prop_id: target.prop.id } : {}));
+                            for (let row of tsv_parsed) {
+                                const item = class_data.items.loaded.find((i) => i.user_Name == row.Name);
+                                if (item) {
+                                    const selected_strings = ((_f = (_e = row[prop.name]) === null || _e === void 0 ? void 0 : _e.split(",")) === null || _f === void 0 ? void 0 : _f.map((a) => a.trim())) ||
+                                        [];
+                                    const selected = target.class.items.loaded.filter((a) => selected_strings.includes(a.user_Name));
+                                    for (let sel of selected) {
+                                        relation_queue.push([{ class_id, prop_id, item_id: item.system_id }, Object.assign(Object.assign({}, target_obj), { item_id: sel.system_id })]);
+                                    }
                                 }
                             }
                         }
@@ -257,7 +263,7 @@ function create_groceries_project(log_only = false) {
                 block_metadata: {}
             });
             const workspace_contents = project.retrieve_workspace_contents(workspace_id);
-            console.log('workspace_contents', workspace_contents.classes[0]);
+            console.log('workspace_contents', (_g = workspace_contents.classes[0]) === null || _g === void 0 ? void 0 : _g.properties[1]);
         }
         return project;
     }
@@ -267,7 +273,7 @@ function grocery_queries() {
     const project = create_groceries_project(true);
     if (project) {
         const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
-        console.log('slim_return', slim_return);
+        // console.log('slim_return',slim_return)
     }
 }
 function in_memory_tests() {
