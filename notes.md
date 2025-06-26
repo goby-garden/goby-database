@@ -14,7 +14,8 @@ Following my last goby-interface note, I’m removing all references to the item
 
 The thing I will need to do in its stead now is modify my class/workspace retrieval functions to manually pull the items for the classes I need, since I was previously relying on automatic caching filling in the items when I fetched them. So a few steps (to do in reverse order):
 
-- [ ] change `retrieve_workspace_contents` to retrieve all class metadata instead of a subset, and do it with `retrieve_all_classes` instead of the cache.
+- [x] change `retrieve_workspace_contents` to retrieve all class metadata instead of a subset, and do it with `retrieve_all_classes` instead of the cache.
+    - instead request just a subset of items, i.e. the ones for the classes which appear as blocks.
 - [x] modify `retrieve_all_classes` to take a parameter which specifies which items to fetch for each class (if any). Then use `retrieve_class_items` to populate the items when requested. This will be the foundation for pagination. But for now I can just set the range to `null` so it fetches all the class items when requested.
 - [x] modify `retrieve_class_items` to accept a pagination range (or `null` for all items as mentioned, and later on I can actually implement the pagination).
 - [x] modify the `items` property of the `ClassData` type to record the pagination state in addition to the actual array of items.

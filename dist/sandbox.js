@@ -197,7 +197,7 @@ function create_groceries_project(log_only = false) {
         log_step("Looping through tables to make relations...");
         // re-fetches classes, this time including all the items
         classes = project.retrieve_all_classes({
-            all: { page_size: null }
+            all_items: { page_size: null }
         });
         const ingredients = classes.find((cls) => cls.name == "Ingredients");
         const enjoyers = classes.find((cls) => cls.name == "Enjoyers");
@@ -244,7 +244,7 @@ function create_groceries_project(log_only = false) {
         }
         project.action_make_relations(relation_queue);
         classes = project.retrieve_all_classes({
-            all: { page_size: null }
+            all_items: { page_size: null }
         });
         console.log('\nrecipes item 1:', classes[0].items.loaded[0]);
         log_step('creating workspace with ingredient class');

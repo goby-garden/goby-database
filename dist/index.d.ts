@@ -83,9 +83,9 @@ export default class Project {
         class_data?: ClassData;
         pagination?: ItemPagination;
     }): PaginatedItems;
-    retrieve_all_classes(with_items?: {
-        all?: ItemPagination;
-        by_class?: {
+    retrieve_all_classes(include?: {
+        all_items?: ItemPagination;
+        items_by_class?: {
             class_id: number;
             pagination: ItemPagination;
         }[];

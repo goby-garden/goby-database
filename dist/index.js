@@ -898,18 +898,18 @@ export default class Project {
         });
         return Object.assign(Object.assign({}, pagination), { loaded: items });
     }
-    // with_items:{
+    // include:{
     //     class_id:number;
     //     pagination:ItemPagination
     // }[] = []
     // MARKER: modify item retrieval
-    retrieve_all_classes(with_items = {}) {
+    retrieve_all_classes(include = {}) {
         const classes_data = this.run.get_all_classes.all();
         return classes_data.map(({ id, name, metadata }) => {
             var _a, _b, _c;
             let properties_sql = this.db.prepare(`SELECT * FROM class_${id}_properties`).all() || [];
             let properties = properties_sql.map((sql_prop) => this.parse_sql_prop(id, sql_prop));
-            const pagination = (_a = with_items.all) !== null && _a !== void 0 ? _a : (_c = (_b = with_items.by_class) === null || _b === void 0 ? void 0 : _b.find(((a) => a.class_id == id))) === null || _c === void 0 ? void 0 : _c.pagination;
+            const pagination = (_a = include.all_items) !== null && _a !== void 0 ? _a : (_c = (_b = include.items_by_class) === null || _b === void 0 ? void 0 : _b.find(((a) => a.class_id == id))) === null || _c === void 0 ? void 0 : _c.pagination;
             const items = pagination ? this.retrieve_class_items({
                 class_id: id,
                 class_name: name,
@@ -979,8 +979,13 @@ export default class Project {
         `).all();
         // MARKER: modify item retrieval
         // get any relevant classes
-        const classes = this.class_cache.filter((cls) => blocks.some((block) => block.type == 'class' && block.thing_id == cls.id));
-        // NOTE: could possibly add class items as well in the future
+        const items_by_class = blocks.filter((b) => b.type == 'class').map((b) => ({
+            class_id: b.thing_id,
+            pagination: {
+                page_size: null
+            }
+        }));
+        const classes = this.retrieve_all_classes({ items_by_class });
         return {
             blocks,
             items,
@@ -1068,4 +1073,14 @@ export default class Project {
         }
     }
 }
+// // match both classes
+//  // match at least one prop
+//  let a0_match_i=b.findIndex(side=>a[0].class_id==side.class_id);
+//  let a1_match_i=b.findIndex(side=>a[1].class_id==side.class_id);
+//  if(a0_match_i>=0&&a1_match_i>=0&&a0_match_i!==a1_match_i){
+//      return b[a0_match_i].prop_id==a[0].prop_id||
+//             b[a1_match_i].prop_id==a[1].prop_id
+//  }else{
+//      return false;
+//  }
 //# sourceMappingURL=index.js.map

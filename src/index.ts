@@ -1148,7 +1148,7 @@ export default class Project{
         };
     }
 
-    // with_items:{
+    // include:{
     //     class_id:number;
     //     pagination:ItemPagination
     // }[] = []
@@ -1156,9 +1156,9 @@ export default class Project{
     
     // MARKER: modify item retrieval
     retrieve_all_classes(
-        with_items:{
-            all?:ItemPagination;
-            by_class?:{
+        include:{
+            all_items?:ItemPagination;
+            items_by_class?:{
                 class_id:number;
                 pagination:ItemPagination
             }[]
@@ -1171,7 +1171,7 @@ export default class Project{
             
             let properties=properties_sql.map((sql_prop)=>this.parse_sql_prop(id,sql_prop));
 
-            const pagination=with_items.all ?? with_items.by_class?.find(((a)=>a.class_id==id))?.pagination;
+            const pagination=include.all_items ?? include.items_by_class?.find(((a)=>a.class_id==id))?.pagination;
             const items = pagination ? this.retrieve_class_items({
                 class_id:id,
                 class_name:name,
@@ -1261,10 +1261,14 @@ export default class Project{
 
         // MARKER: modify item retrieval
         // get any relevant classes
-        const classes=this.class_cache.filter((cls)=>blocks.some((block)=>block.type=='class'&&block.thing_id==cls.id))
-        // NOTE: could possibly add class items as well in the future
-            
+        const items_by_class:{class_id:number,pagination:ItemPagination}[]=blocks.filter((b)=>b.type=='class').map((b)=>({
+            class_id:b.thing_id,
+            pagination:{
+                page_size:null
+            }
+        }))
 
+        const classes=this.retrieve_all_classes({items_by_class});
 
         return {
             blocks,
@@ -1403,12 +1407,3 @@ export default class Project{
     //  }else{
     //      return false;
     //  }
-
-
-    type WithItems = {
-        all?:ItemPagination;
-        by_class?:{
-            class_id:number;
-            pagination:ItemPagination
-        }[]
-    }
