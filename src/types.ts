@@ -181,7 +181,9 @@ export type ItemPagination = {
 }
 
 export type PaginatedItems = ItemPagination & {
-  loaded:ClassRow[]
+  loaded:ClassRow[];
+  /** a count of all the items in the class, not just those loaded */
+  total:number;
 }
 
 

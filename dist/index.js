@@ -797,7 +797,7 @@ export default class Project {
     }
     // MARKER: modify item retrieval
     retrieve_class_items({ class_id, class_name, class_data, pagination = {} }) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         const pagination_defaults = {
             page_size: null,
             property_range: 'all'
@@ -896,12 +896,9 @@ export default class Project {
                 }
             }
         });
-        return Object.assign(Object.assign({}, pagination), { loaded: items });
+        let total = (_e = this.db.prepare(`SELECT COUNT(1) AS total FROM ${class_string}`).all()[0]) === null || _e === void 0 ? void 0 : _e.total;
+        return Object.assign(Object.assign({}, pagination), { loaded: items, total });
     }
-    // include:{
-    //     class_id:number;
-    //     pagination:ItemPagination
-    // }[] = []
     // MARKER: modify item retrieval
     retrieve_all_classes(include = {}) {
         const classes_data = this.run.get_all_classes.all();
@@ -915,7 +912,8 @@ export default class Project {
                 class_name: name,
                 pagination
             }) : {
-                loaded: []
+                loaded: [],
+                total: 0
             };
             return {
                 id,

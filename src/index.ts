@@ -1142,16 +1142,15 @@ export default class Project{
                   }
             }
         });
+
+        let total=this.db.prepare<[],{total:number}>(`SELECT COUNT(1) AS total FROM ${class_string}`).all()[0]?.total;
+
         return {
             ...pagination,
-            loaded:items
+            loaded:items,
+            total
         };
     }
-
-    // include:{
-    //     class_id:number;
-    //     pagination:ItemPagination
-    // }[] = []
 
     
     // MARKER: modify item retrieval
@@ -1177,7 +1176,8 @@ export default class Project{
                 class_name:name,
                 pagination
             }) : {
-                loaded:[]
+                loaded:[],
+                total:0
             }
 
             return {

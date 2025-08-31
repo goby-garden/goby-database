@@ -273,7 +273,7 @@ function grocery_queries() {
     const project = create_groceries_project(true);
     if (project) {
         const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
-        // console.log('slim_return',slim_return)
+        console.log('slim_return', slim_return);
     }
 }
 function in_memory_tests() {
@@ -336,6 +336,8 @@ function in_memory_tests() {
         ],
     });
     console.log(project.junction_cache.map((a) => a.sides));
+    const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
+    console.log('zero items:', slim_return);
     log_step("adding items to classes");
     project.action_add_row(1);
     project.action_add_row(2);
