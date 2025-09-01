@@ -262,6 +262,12 @@ function create_groceries_project(log_only = false) {
                 thing_id: classes[0].id,
                 block_metadata: {}
             });
+            project.action_create_workspace_block({
+                workspace_id,
+                type: 'class',
+                thing_id: classes[1].id,
+                block_metadata: {}
+            });
             const workspace_contents = project.retrieve_workspace_contents(workspace_id);
             console.log('workspace_contents', (_g = workspace_contents.classes[0]) === null || _g === void 0 ? void 0 : _g.properties[1]);
         }

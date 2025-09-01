@@ -130,6 +130,7 @@ export type PropertyDefinition = {
 } | DataDefinition);
 export type ClassRow = {
     [key: string]: any;
+    system_id: number;
 };
 export type ClassData = {
     id: number;
