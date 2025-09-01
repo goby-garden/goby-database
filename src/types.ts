@@ -162,7 +162,10 @@ export type Property = RelationProperty | DataProperty;
 export type PropertyDefinition = {max_values:MaxValues} & ({type:'relation'} | DataDefinition);
 
 
-export type ClassRow={ [key: string]: any };
+export type ClassRow={ 
+  [key: string]: any;
+  system_id: number;
+};
 
 export type ClassData ={
   id:number;
