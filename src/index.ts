@@ -1073,7 +1073,7 @@ export default class Project{
                             let target_select=`
                             SELECT 
                                 "${property_junction_column_name}", 
-                                json_object('class_id',${target.class_id},'id',junction."${target_junction_column_name}"${label_sql_string}) AS target_data 
+                                json_object('class_id',${target.class_id},'system_id',junction."${target_junction_column_name}"${label_sql_string}) AS target_data 
                                 FROM junction_${junction_id} AS junction
                                 LEFT JOIN "class_${target_class?.name}" AS target_class ON junction."${target_junction_column_name}" =  target_class.system_id
                             `;

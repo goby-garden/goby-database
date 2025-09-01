@@ -8,6 +8,11 @@
 
 ### Running notes
 
+#### <span class="date">9/1/2025</span>
+
+To maintain my sanity in the front-end (and probably also for general consistency) I need to either make the slim return of items use `id` instead of `system_id`, or make the array of selected items for a relation prop use `system_id` instead of `id`.
+
+
 #### <span class="date">6/23/2025</span>
 
 Following my last goby-interface note, I’m removing all references to the item cache, which is pretty easy because it wasn’t really doing anything yet. 
