@@ -10,6 +10,16 @@
 
 #### <span class="date">9/1/2025</span>
 
+Some scattered thoughts as I’m working today:
+
+I’ve reached a point where I can save new relationships back to a project database, and I’m noticing that when I reload, the sort order of the item I just added changes. After looking it up, I’ve realized that using a left join without specifying order results in an indeterminate ordering, apparently based on what the query optimizer decides is the best way to order stuff. 
+
+The customization of relation sort order is a larger technical challenge that I may have to tackle at some point. It sort of contradicts the whole point of the junction table approach by necessitating that data be stored twice or more (to specify the order on each property participating in a relationship). 
+
+But for now I think a simple thing I can do is just add a primary key to my junction tables, and specify that this be used to sort relations, that way it will privilage time added.
+
+---
+
 To maintain my sanity in the front-end (and probably also for general consistency) I need to either make the slim return of items use `id` instead of `system_id`, or make the array of selected items for a relation prop use `system_id` instead of `id`.
 
 

@@ -785,7 +785,8 @@ export default class Project{
         // creates table
         this.create_table('junction',id,[
             `"${junction_col_name(sides[0].class_id,sides[0].prop_id)}" INTEGER`,
-            `"${junction_col_name(sides[1].class_id,sides[1].prop_id)}" INTEGER`
+            `"${junction_col_name(sides[1].class_id,sides[1].prop_id)}" INTEGER`,
+            `date_added INTEGER`
         ]);
 
         return id;
@@ -998,11 +999,13 @@ export default class Project{
             }
             let junction_id=this.junction_cache.find(j=>full_relation_match(j.sides,[input_1,input_2]))?.id;
     
+            const date_added=Date.now();
+
             if(junction_id){
                 this.db.prepare(`
                     INSERT INTO junction_${junction_id} 
-                    ("${column_names.input_1}", "${column_names.input_2}") 
-                    VALUES (${input_1.item_id},${input_2.item_id})
+                    ("${column_names.input_1}", "${column_names.input_2}",date_added) 
+                    VALUES (${input_1.item_id},${input_2.item_id},${date_added})
                 `).run();
             }else{
                 throw Error('Something went wrong - junction table for relationship not found')
@@ -1073,7 +1076,7 @@ export default class Project{
                             let target_select=`
                             SELECT 
                                 "${property_junction_column_name}", 
-                                json_object('class_id',${target.class_id},'system_id',junction."${target_junction_column_name}"${label_sql_string}) AS target_data 
+                                json_object('class_id',${target.class_id},'system_id',junction."${target_junction_column_name}"${label_sql_string}) AS target_data, junction.date_added AS date_added
                                 FROM junction_${junction_id} AS junction
                                 LEFT JOIN "class_${target_class?.name}" AS target_class ON junction."${target_junction_column_name}" =  target_class.system_id
                             `;
@@ -1093,8 +1096,10 @@ export default class Project{
                             ${target_selects.join(` 
                             UNION 
                             `)}
+                            ORDER BY date_added
                         )
                         GROUP BY "${property_junction_column_name}"
+
                     )`
                     
                     cte_strings.push(cte);

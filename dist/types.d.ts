@@ -23,8 +23,10 @@ export type RelationTarget = {
     prop_id?: number | null;
     junction_id: number;
 };
-export type ItemRelationSide = RelationshipSide & {
+export type ItemRelationSide = {
+    class_id: number;
     item_id: number;
+    prop_id?: number;
 };
 type RelationCreate = {
     type: 'create';
