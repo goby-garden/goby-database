@@ -7,6 +7,16 @@ import { defined,partial_relation_match } from "./utils.js";
 
 const [, , arg] = process.argv;
 
+
+function delay(duration:number){
+  return new Promise((resolve)=>{
+    setTimeout(()=>{
+      resolve(true);
+    },duration)
+  })
+}
+
+
 if (arg) {
   log_step(`running ${arg} test...`, 1);
   switch (arg) {
@@ -31,7 +41,7 @@ if (arg) {
   console.log("no test provided");
 }
 
-function create_groceries_project(log_only = false) {
+async function create_groceries_project(log_only = false,delay_time=0) {
   const write_to_db=!log_only;
   const d = new Date();
   const d_string = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}_${d.getHours()}.${d.getMinutes()}`;
@@ -294,7 +304,14 @@ function create_groceries_project(log_only = false) {
                     selected_strings.includes(a.user_Name)
                   );
                   for (let sel of selected) {
-                      relation_queue.push([{ class_id, prop_id, item_id: item.system_id },{ ...target_obj, item_id: sel.system_id }])
+                    await delay(delay_time);
+                    project.action_make_relations(
+                      [
+                        [{ class_id, prop_id, item_id: item.system_id },{ ...target_obj, item_id: sel.system_id }]
+                      ]
+                    );
+
+                      // relation_queue.push([{ class_id, prop_id, item_id: item.system_id },{ ...target_obj, item_id: sel.system_id }])
                   }
                 }
               }
@@ -306,7 +323,7 @@ function create_groceries_project(log_only = false) {
       }
     }
 
-    project.action_make_relations(relation_queue);
+    // project.action_make_relations(relation_queue);
 
     classes=project.retrieve_all_classes({
       all_items:{page_size:null}
@@ -339,11 +356,14 @@ function create_groceries_project(log_only = false) {
   return null;
 }
 
-function grocery_queries(){
-    const project=create_groceries_project(true);
+async function grocery_queries(){
+    const project=await create_groceries_project(true,10);
     if(project){
       const slim_return = project.retrieve_class_items({class_id:1,pagination:{property_range:'slim'}});
-      console.log('slim_return',slim_return)
+      // console.log('slim_return',slim_return)
+
+      const reg_return = project.retrieve_class_items({class_id:1});
+      console.log('reg_return',reg_return.loaded[0])
     }
 }
 
