@@ -811,10 +811,10 @@ export default class Project {
         var _a, _b, _c, _d, _e;
         const pagination_defaults = {
             page_size: null,
-            property_range: 'all'
+            property_range: 'all',
+            item_range: 'all'
         };
         pagination = Object.assign(Object.assign({}, pagination_defaults), pagination);
-        const slim = pagination.property_range == 'slim';
         if (class_name == undefined || class_data == undefined) {
             class_data = this.lookup_class(class_id);
             class_name = class_data.name;
@@ -827,66 +827,76 @@ export default class Project {
         const cte_joins = [];
         // joined+added between SELECT and FROM, built from relations
         const relation_selections = [];
-        // NOTE: in the future, if a property_range is defined, first filter class_data.properties by those IDs
-        let relation_properties = class_data.properties.filter(a => a.type == 'relation');
-        if (!slim) {
-            for (let prop of relation_properties) {
-                const target_selects = [];
-                let property_junction_column_name = junction_col_name(class_id, prop.id);
-                if (prop.relation_targets.length > 0) {
-                    for (let i = 0; i < prop.relation_targets.length; i++) {
-                        // find the side that does not match both the class and prop IDs
-                        let target = prop.relation_targets[i];
-                        const target_class = this.class_cache.find((a) => a.id == (target === null || target === void 0 ? void 0 : target.class_id));
-                        if (target && target_class) {
-                            let target_junction_column_name = junction_col_name(target.class_id, target.prop_id);
-                            // NOTE: as mentioned elsewhere, possibly allow multiple label props
-                            const target_label_id = (_b = (_a = target_class === null || target_class === void 0 ? void 0 : target_class.metadata) === null || _a === void 0 ? void 0 : _a.label) === null || _b === void 0 ? void 0 : _b.properties[0];
-                            const target_label = target_class === null || target_class === void 0 ? void 0 : target_class.properties.find((p) => p.id == target_label_id);
-                            const label_sql_string = target_label ? `,'user_${target_label.name}',target_class."user_${target_label.name}"` : '';
-                            let junction_id = target.junction_id;
-                            let target_select = `
-                            SELECT 
-                                "${property_junction_column_name}", 
-                                json_object('class_id',${target.class_id},'system_id',junction."${target_junction_column_name}"${label_sql_string}) AS target_data, junction.date_added AS date_added
-                                FROM junction_${junction_id} AS junction
-                                LEFT JOIN "class_${target_class === null || target_class === void 0 ? void 0 : target_class.name}" AS target_class ON junction."${target_junction_column_name}" =  target_class.system_id
-                            `;
-                            target_selects.push(target_select);
-                        }
-                        else {
-                            throw Error('Something went wrong trying to retrieve relationship data');
-                        }
+        const label_prop_ids = (_b = (_a = class_data.metadata.label) === null || _a === void 0 ? void 0 : _a.properties) !== null && _b !== void 0 ? _b : [];
+        // if a property_range is defined, first filter class_data.properties by those IDs
+        const retrieved_properties = class_data.properties.filter((prop) => {
+            if (pagination.property_range == 'all' || !pagination.property_range) {
+                return true;
+            }
+            else if (pagination.property_range == 'slim') {
+                return label_prop_ids.includes(prop.id);
+            }
+            else {
+                return pagination.property_range.includes(prop.id);
+            }
+        });
+        const relation_properties = retrieved_properties.filter(a => a.type == 'relation');
+        const data_properties = retrieved_properties.filter(a => a.type == 'data');
+        for (let prop of relation_properties) {
+            const target_selects = [];
+            let property_junction_column_name = junction_col_name(class_id, prop.id);
+            if (prop.relation_targets.length > 0) {
+                for (let i = 0; i < prop.relation_targets.length; i++) {
+                    // find the side that does not match both the class and prop IDs
+                    let target = prop.relation_targets[i];
+                    const target_class = this.class_cache.find((a) => a.id == (target === null || target === void 0 ? void 0 : target.class_id));
+                    if (target && target_class) {
+                        let target_junction_column_name = junction_col_name(target.class_id, target.prop_id);
+                        // NOTE: as mentioned elsewhere, possibly allow multiple label props
+                        const target_label_id = (_d = (_c = target_class === null || target_class === void 0 ? void 0 : target_class.metadata) === null || _c === void 0 ? void 0 : _c.label) === null || _d === void 0 ? void 0 : _d.properties[0];
+                        const target_label = target_class === null || target_class === void 0 ? void 0 : target_class.properties.find((p) => p.id == target_label_id);
+                        const label_sql_string = target_label ? `,'user_${target_label.name}',target_class."user_${target_label.name}"` : '';
+                        let junction_id = target.junction_id;
+                        let target_select = `
+                        SELECT 
+                            "${property_junction_column_name}", 
+                            json_object('class_id',${target.class_id},'system_id',junction."${target_junction_column_name}"${label_sql_string}) AS target_data, junction.date_added AS date_added
+                            FROM junction_${junction_id} AS junction
+                            LEFT JOIN "class_${target_class === null || target_class === void 0 ? void 0 : target_class.name}" AS target_class ON junction."${target_junction_column_name}" =  target_class.system_id
+                        `;
+                        target_selects.push(target_select);
                     }
-                    // uses built-in aggregate json function instead of group_concat craziness
-                    const cte = `[${prop.id}_cte] AS (
-                        SELECT "${property_junction_column_name}", json_group_array( json(target_data) ) AS [user_${prop.name}]
-                        FROM 
-                        (
-                            ${target_selects.join(` 
-                            UNION 
-                            `)}
-                            ORDER BY date_added
-                        )
-                        GROUP BY "${property_junction_column_name}"
+                    else {
+                        throw Error('Something went wrong trying to retrieve relationship data');
+                    }
+                }
+                // uses built-in aggregate json function instead of group_concat craziness
+                const cte = `[${prop.id}_cte] AS (
+                    SELECT "${property_junction_column_name}", json_group_array( json(target_data) ) AS [user_${prop.name}]
+                    FROM 
+                    (
+                        ${target_selects.join(` 
+                        UNION 
+                        `)}
+                        ORDER BY date_added
+                    )
+                    GROUP BY "${property_junction_column_name}"
 
-                    )`;
-                    cte_strings.push(cte);
-                    relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
-                    cte_joins.push(`LEFT JOIN [${prop.id}_cte] ON [${prop.id}_cte]."${property_junction_column_name}" = ${class_string}.system_id`);
-                }
-                else {
-                    relation_selections.push(`'[]' AS [user_${prop.name}]`);
-                }
+                )`;
+                cte_strings.push(cte);
+                relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
+                cte_joins.push(`LEFT JOIN [${prop.id}_cte] ON [${prop.id}_cte]."${property_junction_column_name}" = ${class_string}.system_id`);
+            }
+            else {
+                relation_selections.push(`'[]' AS [user_${prop.name}]`);
             }
         }
         let orderby = `ORDER BY ${class_string}.system_order`;
-        let table_selection = `[class_${class_name}].*`;
-        if (slim) {
-            const label_prop_ids = (_d = (_c = class_data.metadata.label) === null || _c === void 0 ? void 0 : _c.properties) !== null && _d !== void 0 ? _d : [];
-            const label_props = class_data.properties.filter((p) => label_prop_ids.includes(p.id));
-            const label_prop_sql_string = label_props.map((p) => `[user_${p.name}]`).join(',');
-            table_selection = `system_id,system_order,${label_prop_sql_string}`;
+        const data_prop_sql_string = data_properties.map((p) => `[user_${p.name}]`).join(',');
+        const table_selection = pagination.property_range == 'all' ? `[class_${class_name}].*` : `system_id,system_order,${data_prop_sql_string}`;
+        let filter_by_items = '';
+        if (pagination.item_range && pagination.item_range !== 'all') {
+            filter_by_items = `WHERE system_id in (${pagination.item_range.join(',')})`;
         }
         let comma_break = `,
             `;
@@ -895,6 +905,7 @@ export default class Project {
             SELECT ${table_selection} ${relation_selections.length > 0 ? ', ' + relation_selections.join(`, `) : ''}
             FROM [class_${class_name}]
             ${cte_joins.join(' ')}
+            ${filter_by_items}
             ${orderby}`;
         // possibly elaborate this any type a little more in the future, e.g. a CellValue or SQLCellValue type that expects some wildcards
         let items = this.db.prepare(query).all();

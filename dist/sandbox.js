@@ -299,11 +299,29 @@ function create_groceries_project() {
 }
 function grocery_queries() {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b;
         const project = yield create_groceries_project(true, 0);
-        if (project) {
-            // const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
-            // console.log('slim_return',slim_return)
+        // test_slim_return();
+        // test_removing_relation();
+        test_item_range();
+        function test_slim_return() {
+            if (!project)
+                return;
+            const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
+            console.log('slim_return', slim_return);
+        }
+        function test_item_range() {
+            if (!project)
+                return;
+            const items_in_range = project.retrieve_class_items({ class_id: 1, pagination: {
+                    property_range: 'all',
+                    item_range: [20, 17, 15]
+                } });
+            console.log('items_in_range', items_in_range);
+        }
+        function test_removing_relation() {
+            var _a, _b;
+            if (!project)
+                return;
             const reg_return = project.retrieve_class_items({ class_id: 1 });
             console.log('zucchini-tomato pasta ingredients', (_a = reg_return.loaded[0]) === null || _a === void 0 ? void 0 : _a.user_Ingredients);
             project.action_edit_relations([{

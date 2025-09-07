@@ -358,10 +358,29 @@ async function create_groceries_project(log_only = false, delay_time = 0) {
 
 async function grocery_queries() {
   const project = await create_groceries_project(true, 0);
-  if (project) {
-    // const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
-    // console.log('slim_return',slim_return)
 
+  // test_slim_return();
+  // test_removing_relation();
+  test_item_range();
+
+    
+  function test_slim_return(){
+    if(!project) return;
+    const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
+    console.log('slim_return',slim_return)
+  }
+
+  function test_item_range(){
+    if(!project) return;
+    const items_in_range = project.retrieve_class_items({ class_id: 1, pagination: { 
+      property_range:'all',
+      item_range:[20,17,15]
+    } });
+    console.log('items_in_range',items_in_range)
+  }
+
+  function test_removing_relation(){
+    if(!project) return;
     const reg_return = project.retrieve_class_items({ class_id: 1 });
     console.log('zucchini-tomato pasta ingredients', reg_return.loaded[0]?.user_Ingredients)
     project.action_edit_relations([{
@@ -371,9 +390,8 @@ async function grocery_queries() {
         {class_id:2,item_id:27,prop_id:3}
       ]
     }])
-     const refetch = project.retrieve_class_items({ class_id: 1 });
-     console.log('zucchini-tomato pasta ingredients after removing garlic', refetch.loaded[0]?.user_Ingredients)
-
+    const refetch = project.retrieve_class_items({ class_id: 1 });
+    console.log('zucchini-tomato pasta ingredients after removing garlic', refetch.loaded[0]?.user_Ingredients)
   }
 }
 

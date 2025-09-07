@@ -145,7 +145,10 @@ export type ClassList = ClassData[];
 export type ItemPagination = {
     page_size?: number | null;
     page_range?: [start: number, end?: number];
+    /** Filters props by ID. If not specified, pulls all. "slim" pulls the ID and label */
     property_range?: number[] | 'slim' | 'all';
+    /** Filter by item IDs. If not specified, pulls all */
+    item_range?: number[] | 'all';
 };
 export type PaginatedItems = ItemPagination & {
     loaded: ClassRow[];
