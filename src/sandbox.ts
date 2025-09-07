@@ -3,16 +3,16 @@ import Project from "./index.js";
 import { tsvParse } from "d3-dsv";
 import { readFileSync, existsSync } from "node:fs";
 import { ClassData, DataType, ItemRelationSide, JunctionSides, MaxValues, Property } from "./types.js";
-import { defined,partial_relation_match } from "./utils.js";
+import { defined, partial_relation_match } from "./utils.js";
 
 const [, , arg] = process.argv;
 
 
-function delay(duration:number){
-  return new Promise((resolve)=>{
-    setTimeout(()=>{
+function delay(duration: number) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
       resolve(true);
-    },duration)
+    }, duration)
   })
 }
 
@@ -41,8 +41,8 @@ if (arg) {
   console.log("no test provided");
 }
 
-async function create_groceries_project(log_only = false,delay_time=0) {
-  const write_to_db=!log_only;
+async function create_groceries_project(log_only = false, delay_time = 0) {
+  const write_to_db = !log_only;
   const d = new Date();
   const d_string = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}_${d.getHours()}.${d.getMinutes()}`;
 
@@ -60,49 +60,49 @@ async function create_groceries_project(log_only = false,delay_time=0) {
         max_values: MaxValues;
       }[];
     }[] = [
-      {
-        title: "Recipes",
-        tsv: "test_data/groceries-recipes.tsv",
-        tsv_parsed: [],
-        properties: [
-          { name: "Name", type: "string", max_values: 1 },
-          { name: "Ingredients", type: "relation", max_values: null },
-          { name: "Nice-to-have", type: "relation", max_values: null },
-          { name: "Recipe", type: "resource", max_values: 1 },
-          { name: "Meal", type: "relation", max_values: null },
-          { name: "Enjoyers", type: "relation", max_values: null },
-        ],
-      },
-      {
-        title: "Ingredients",
-        tsv: "test_data/groceries-ingredients.tsv",
-        tsv_parsed: [],
-        properties: [
-          { name: "Name", type: "string", max_values: 1 },
-          { name: "Stocked", type: "boolean", max_values: 1 },
-          { name: "Used in", type: "relation", max_values: null },
-          { name: "Snackable", type: "boolean", max_values: 1 },
-          { name: "Category", type: "relation", max_values: 1 },
-        ],
-      },
-      {
-        title: "Ingredient categories",
-        tsv: "test_data/groceries-ingredient-categories.tsv",
-        tsv_parsed: [],
-        properties: [{ name: "Name", type: "string", max_values: 1 }],
-      },
-      {
-        title: "Meal types",
-        tsv: "test_data/groceries-meal-types.tsv",
-        properties: [{ name: "Name", type: "string", max_values: 1 }],
-      },
-      {
-        title: "Enjoyers",
-        tsv: "test_data/enjoyers.tsv",
-        tsv_parsed: [],
-        properties: [{ name: "Name", type: "string", max_values: 1 }],
-      },
-    ];
+        {
+          title: "Recipes",
+          tsv: "test_data/groceries-recipes.tsv",
+          tsv_parsed: [],
+          properties: [
+            { name: "Name", type: "string", max_values: 1 },
+            { name: "Ingredients", type: "relation", max_values: null },
+            { name: "Nice-to-have", type: "relation", max_values: null },
+            { name: "Recipe", type: "resource", max_values: 1 },
+            { name: "Meal", type: "relation", max_values: null },
+            { name: "Enjoyers", type: "relation", max_values: null },
+          ],
+        },
+        {
+          title: "Ingredients",
+          tsv: "test_data/groceries-ingredients.tsv",
+          tsv_parsed: [],
+          properties: [
+            { name: "Name", type: "string", max_values: 1 },
+            { name: "Stocked", type: "boolean", max_values: 1 },
+            { name: "Used in", type: "relation", max_values: null },
+            { name: "Snackable", type: "boolean", max_values: 1 },
+            { name: "Category", type: "relation", max_values: 1 },
+          ],
+        },
+        {
+          title: "Ingredient categories",
+          tsv: "test_data/groceries-ingredient-categories.tsv",
+          tsv_parsed: [],
+          properties: [{ name: "Name", type: "string", max_values: 1 }],
+        },
+        {
+          title: "Meal types",
+          tsv: "test_data/groceries-meal-types.tsv",
+          properties: [{ name: "Name", type: "string", max_values: 1 }],
+        },
+        {
+          title: "Enjoyers",
+          tsv: "test_data/enjoyers.tsv",
+          tsv_parsed: [],
+          properties: [{ name: "Name", type: "string", max_values: 1 }],
+        },
+      ];
 
     log_step('Creating class schema')
     project.action_edit_class_schema({
@@ -121,14 +121,14 @@ async function create_groceries_project(log_only = false,delay_time=0) {
               config:
                 prop.type == "relation"
                   ? {
-                      type: "relation",
-                      max_values: prop.max_values,
-                    }
+                    type: "relation",
+                    max_values: prop.max_values,
+                  }
                   : {
-                      type: "data",
-                      data_type: prop.type,
-                      max_values: prop.max_values,
-                    },
+                    type: "data",
+                    data_type: prop.type,
+                    max_values: prop.max_values,
+                  },
             };
           });
       }),
@@ -176,12 +176,12 @@ async function create_groceries_project(log_only = false,delay_time=0) {
           ],
         },
         {
-            type: "create",
-            sides: [
-              { class_name: "Recipes", prop_name: "Enjoyers" },
-              { class_name: "Enjoyers" },
-            ],
-          }
+          type: "create",
+          sides: [
+            { class_name: "Recipes", prop_name: "Enjoyers" },
+            { class_name: "Enjoyers" },
+          ],
+        }
       ],
     });
 
@@ -219,8 +219,8 @@ async function create_groceries_project(log_only = false,delay_time=0) {
               row[name] == "FALSE"
                 ? false
                 : row[name] == "TRUE"
-                ? true
-                : row[name],
+                  ? true
+                  : row[name],
           }));
 
           project.action_set_property_values(class_id, item_id, changes);
@@ -231,8 +231,8 @@ async function create_groceries_project(log_only = false,delay_time=0) {
 
     log_step("Looping through tables to make relations...");
     // re-fetches classes, this time including all the items
-    classes=project.retrieve_all_classes({
-      all_items:{page_size:null}
+    classes = project.retrieve_all_classes({
+      all_items: { page_size: null }
     })
 
 
@@ -254,8 +254,8 @@ async function create_groceries_project(log_only = false,delay_time=0) {
       Ingredients: [{
         class: ingredients,
         prop: ingredients?.properties?.find((a) => a.name == "Used in"),
-      },{
-        class:recipes
+      }, {
+        class: recipes
       }],
       "Nice-to-have": [{ class: ingredients }],
       Enjoyers: [{ class: enjoyers }],
@@ -263,37 +263,37 @@ async function create_groceries_project(log_only = false,delay_time=0) {
       Category: [{ class: ingredient_type }],
     };
 
-    const relation_queue:[input_1:ItemRelationSide,input_2:ItemRelationSide][]=[];
+    const relation_queue: [input_1: ItemRelationSide, input_2: ItemRelationSide][] = [];
 
     for (let { properties, tsv_parsed, class_data } of tables) {
-      
+
       if (tsv_parsed && defined(class_data)) {
-        
+
         const class_id = class_data.id;
-        class_data.items=project.retrieve_class_items({
+        class_data.items = project.retrieve_class_items({
           class_id
         })
         for (let prop of properties.filter((p) => p.type == "relation")) {
-          
+
 
           const prop_id = class_data.properties.find(
             (a) => a.name == prop.name
           )?.id;
           const target_classes = targets[prop.name] || [];
 
-          console.log('target_classes',target_classes)
+          console.log('target_classes', target_classes)
 
-          for(let target of target_classes){
+          for (let target of target_classes) {
             if (target && target.class && defined(prop_id)) {
-              console.log('\nprop:',`${class_data.name} / ${prop.name}`);
-              console.log('target:',`${target.class.name} ${target.prop?.name ? '/ '+target.prop?.name : ''}`)
-  
+              console.log('\nprop:', `${class_data.name} / ${prop.name}`);
+              console.log('target:', `${target.class.name} ${target.prop?.name ? '/ ' + target.prop?.name : ''}`)
+
               const target_obj = {
                 class_id: target.class.id,
                 ...(target.prop ? { prop_id: target.prop.id } : {}),
               };
-  
-  
+
+
               for (let row of tsv_parsed) {
                 const item = class_data.items.loaded.find((i) => i.user_Name == row.Name);
                 if (item) {
@@ -305,49 +305,49 @@ async function create_groceries_project(log_only = false,delay_time=0) {
                   );
                   for (let sel of selected) {
                     await delay(delay_time);
-                    project.action_make_relations(
+                    project.action_edit_relations(
                       [
-                        [{ class_id, prop_id, item_id: item.system_id },{ ...target_obj, item_id: sel.system_id }]
+                        { change: 'add', sides: [{ class_id, prop_id, item_id: item.system_id }, { ...target_obj, item_id: sel.system_id }] }
                       ]
                     );
 
-                      // relation_queue.push([{ class_id, prop_id, item_id: item.system_id },{ ...target_obj, item_id: sel.system_id }])
+                    // relation_queue.push([{ class_id, prop_id, item_id: item.system_id },{ ...target_obj, item_id: sel.system_id }])
                   }
                 }
               }
             }
           }
-          
-          
+
+
         }
       }
     }
 
     // project.action_make_relations(relation_queue);
 
-    classes=project.retrieve_all_classes({
-      all_items:{page_size:null}
+    classes = project.retrieve_all_classes({
+      all_items: { page_size: null }
     })
 
-    console.log('\nrecipes item 1:',classes[0].items.loaded[0])
+    console.log('\nrecipes item 1:', classes[0].items.loaded[0])
 
     log_step('creating workspace with ingredient class')
-    const workspace_id=project.action_config_window({type:'workspace',open:1});
-    if(classes.length>0&&workspace_id){
+    const workspace_id = project.action_config_window({ type: 'workspace', open: 1 });
+    if (classes.length > 0 && workspace_id) {
       project.action_create_workspace_block({
         workspace_id,
-        type:'class',
-        thing_id:classes[0].id,
-        block_metadata:{}
+        type: 'class',
+        thing_id: classes[0].id,
+        block_metadata: {}
       })
       project.action_create_workspace_block({
         workspace_id,
-        type:'class',
-        thing_id:classes[1].id,
-        block_metadata:{}
+        type: 'class',
+        thing_id: classes[1].id,
+        block_metadata: {}
       })
-      const workspace_contents=project.retrieve_workspace_contents(workspace_id);
-      console.log('workspace_contents',workspace_contents.classes[0]?.properties[1])
+      const workspace_contents = project.retrieve_workspace_contents(workspace_id);
+      console.log('workspace_contents', workspace_contents.classes[0]?.properties[1])
     }
 
     return project;
@@ -356,15 +356,25 @@ async function create_groceries_project(log_only = false,delay_time=0) {
   return null;
 }
 
-async function grocery_queries(){
-    const project=await create_groceries_project(true,10);
-    if(project){
-      const slim_return = project.retrieve_class_items({class_id:1,pagination:{property_range:'slim'}});
-      // console.log('slim_return',slim_return)
+async function grocery_queries() {
+  const project = await create_groceries_project(true, 0);
+  if (project) {
+    // const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
+    // console.log('slim_return',slim_return)
 
-      const reg_return = project.retrieve_class_items({class_id:1});
-      console.log('reg_return',reg_return.loaded[0])
-    }
+    const reg_return = project.retrieve_class_items({ class_id: 1 });
+    console.log('zucchini-tomato pasta ingredients', reg_return.loaded[0]?.user_Ingredients)
+    project.action_edit_relations([{
+      change:'remove',
+      sides:[
+        {class_id:1,item_id:1,prop_id:2},
+        {class_id:2,item_id:27,prop_id:3}
+      ]
+    }])
+     const refetch = project.retrieve_class_items({ class_id: 1 });
+     console.log('zucchini-tomato pasta ingredients after removing garlic', refetch.loaded[0]?.user_Ingredients)
+
+  }
 }
 
 function in_memory_tests() {
@@ -429,8 +439,8 @@ function in_memory_tests() {
   });
   console.log(project.junction_cache.map((a) => a.sides));
 
-  const slim_return = project.retrieve_class_items({class_id:1,pagination:{property_range:'slim'}});
-  console.log('zero items:',slim_return)
+  const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
+  console.log('zero items:', slim_return)
 
   log_step("adding items to classes");
   project.action_add_row(1);
@@ -439,48 +449,36 @@ function in_memory_tests() {
   project.action_add_row(3);
 
   log_step("making connections between items in classes");
-  project.action_make_relations(
+  project.action_edit_relations(
     [
-        [
-            {
-            class_id: 1,
-            prop_id: 3,
-            item_id: 1,
-            },
-            {
-            class_id: 2,
-            prop_id: 2,
-            item_id: 2,
-            }
-        ],
-        [{
-            class_id: 1,
-            prop_id: 3,
-            item_id: 1,
-          },
-          {
-            class_id: 2,
-            prop_id: 2,
-            item_id: 3,
-          }],
-          [{
-            class_id: 1,
-            prop_id: 3,
-            item_id: 1,
-          },
-          {
-            class_id: 3,
-            item_id: 4,
-          }],
-          [{
-            class_id: 1,
-            prop_id: 4,
-            item_id: 1,
-          },
-          {
-            class_id: 2,
-            item_id: 2,
-          }]
+      {
+        change: 'add',
+        sides: [
+          {class_id: 1,prop_id: 3,item_id: 1},
+          {class_id: 2,prop_id: 2,item_id: 2}
+        ]
+      },
+      {
+        change: 'add', 
+        sides: [
+          { class_id: 1, prop_id: 3, item_id: 1 },
+          { class_id: 2, prop_id: 2, item_id: 3 }
+        ]
+      },
+      {
+          change: 'add', 
+          sides: [
+            {class_id: 1,prop_id: 3,item_id: 1},
+            {class_id: 3,item_id: 4}
+          ]
+      },
+      {
+        change: 'add', 
+        sides: [
+          {class_id: 1,prop_id: 4,item_id: 1},
+          {class_id: 2,item_id: 2}
+        ]
+      }
     ]
   );
 
@@ -510,7 +508,7 @@ function in_memory_tests() {
         type: "create",
         sides: [
           { class_id: 1, prop_id: 3 },
-          { class_id: 2, prop_name: "author2" },
+          { class_id: 2, prop_name: "author2" }
         ],
       },
     ],

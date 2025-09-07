@@ -453,8 +453,9 @@ With my new typescript and package export setup I have some new commands for dev
 - `npm run build`: runs the typescript compiler on all the files in `src`, adding them to `dist`. 
 - `npm run test [test name]`: this is my system for putting all my tests in one file, `sandbox.ts`, and passing in a string parameter with the name of the test to run. My tests so far:
 
-    - `in-memory`: some general tests of goby’s capabilities in an in-memory database 
+    - `in-memory`: some general tests of goby’s schema editing capabilities in an in-memory database 
     - `groceries`: this generates a timestamped project file with recipe and ingredient classes. I’ve been using this test and exporting the file to use as the foundation for my interface development
+    - `grocery-queries`: starts with generating the groceries project but only in memory, and then does some validation tests workign with a substantive data set
     - `unit-relation-matching`: my first “unit test”, verifying that one of my more complex utility functions returns expected outputs in a variety of scenarios.
 
 

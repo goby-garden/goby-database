@@ -257,8 +257,8 @@ function create_groceries_project() {
                                         const selected = target.class.items.loaded.filter((a) => selected_strings.includes(a.user_Name));
                                         for (let sel of selected) {
                                             yield delay(delay_time);
-                                            project.action_make_relations([
-                                                [{ class_id, prop_id, item_id: item.system_id }, Object.assign(Object.assign({}, target_obj), { item_id: sel.system_id })]
+                                            project.action_edit_relations([
+                                                { change: 'add', sides: [{ class_id, prop_id, item_id: item.system_id }, Object.assign(Object.assign({}, target_obj), { item_id: sel.system_id })] }
                                             ]);
                                             // relation_queue.push([{ class_id, prop_id, item_id: item.system_id },{ ...target_obj, item_id: sel.system_id }])
                                         }
@@ -299,12 +299,22 @@ function create_groceries_project() {
 }
 function grocery_queries() {
     return __awaiter(this, void 0, void 0, function* () {
-        const project = yield create_groceries_project(true, 10);
+        var _a, _b;
+        const project = yield create_groceries_project(true, 0);
         if (project) {
-            const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
+            // const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
             // console.log('slim_return',slim_return)
             const reg_return = project.retrieve_class_items({ class_id: 1 });
-            console.log('reg_return', reg_return.loaded[0]);
+            console.log('zucchini-tomato pasta ingredients', (_a = reg_return.loaded[0]) === null || _a === void 0 ? void 0 : _a.user_Ingredients);
+            project.action_edit_relations([{
+                    change: 'remove',
+                    sides: [
+                        { class_id: 1, item_id: 1, prop_id: 2 },
+                        { class_id: 2, item_id: 27, prop_id: 3 }
+                    ]
+                }]);
+            const refetch = project.retrieve_class_items({ class_id: 1 });
+            console.log('zucchini-tomato pasta ingredients after removing garlic', (_b = refetch.loaded[0]) === null || _b === void 0 ? void 0 : _b.user_Ingredients);
         }
     });
 }
@@ -376,47 +386,35 @@ function in_memory_tests() {
     project.action_add_row(2);
     project.action_add_row(3);
     log_step("making connections between items in classes");
-    project.action_make_relations([
-        [
-            {
-                class_id: 1,
-                prop_id: 3,
-                item_id: 1,
-            },
-            {
-                class_id: 2,
-                prop_id: 2,
-                item_id: 2,
-            }
-        ],
-        [{
-                class_id: 1,
-                prop_id: 3,
-                item_id: 1,
-            },
-            {
-                class_id: 2,
-                prop_id: 2,
-                item_id: 3,
-            }],
-        [{
-                class_id: 1,
-                prop_id: 3,
-                item_id: 1,
-            },
-            {
-                class_id: 3,
-                item_id: 4,
-            }],
-        [{
-                class_id: 1,
-                prop_id: 4,
-                item_id: 1,
-            },
-            {
-                class_id: 2,
-                item_id: 2,
-            }]
+    project.action_edit_relations([
+        {
+            change: 'add',
+            sides: [
+                { class_id: 1, prop_id: 3, item_id: 1 },
+                { class_id: 2, prop_id: 2, item_id: 2 }
+            ]
+        },
+        {
+            change: 'add',
+            sides: [
+                { class_id: 1, prop_id: 3, item_id: 1 },
+                { class_id: 2, prop_id: 2, item_id: 3 }
+            ]
+        },
+        {
+            change: 'add',
+            sides: [
+                { class_id: 1, prop_id: 3, item_id: 1 },
+                { class_id: 3, item_id: 4 }
+            ]
+        },
+        {
+            change: 'add',
+            sides: [
+                { class_id: 1, prop_id: 4, item_id: 1 },
+                { class_id: 2, item_id: 2 }
+            ]
+        }
     ]);
     project.refresh_caches(["classlist", "items", "junctions"]);
     log_step("deleting author property in books");
@@ -442,7 +440,7 @@ function in_memory_tests() {
                 type: "create",
                 sides: [
                     { class_id: 1, prop_id: 3 },
-                    { class_id: 2, prop_name: "author2" },
+                    { class_id: 2, prop_name: "author2" }
                 ],
             },
         ],

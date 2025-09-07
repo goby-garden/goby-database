@@ -76,7 +76,10 @@ export default class Project {
         property_id: number;
         value: any;
     }[]): void;
-    action_make_relations(relations: [input_1: ItemRelationSide, input_2: ItemRelationSide][]): void;
+    action_edit_relations(relations: {
+        change: 'add' | 'remove';
+        sides: [input_1: ItemRelationSide, input_2: ItemRelationSide];
+    }[]): void;
     retrieve_class_items({ class_id, class_name, class_data, pagination }: {
         class_id: number;
         class_name?: string;

@@ -987,29 +987,46 @@ export default class Project{
 
     
 
-    action_make_relations(relations:[input_1:ItemRelationSide,input_2:ItemRelationSide][]){
+    action_edit_relations(
+        relations:{
+            change:'add'|'remove',
+            sides:[input_1:ItemRelationSide,input_2:ItemRelationSide]
+        }[]
+    ){
         // NOTE: changes to make to this in the future:
         //  - for input readability, allow class_name and prop_name as input options, assuming they’re enforced as unique, and use them to look up IDs
         //  - enforce max_values here
 
-        for(let [input_1,input_2] of relations){
-            let column_names={
+        for(let {change,sides} of relations){
+            const [input_1,input_2] = sides;
+
+            const column_names={
                 input_1:junction_col_name(input_1.class_id,input_1.prop_id),
                 input_2:junction_col_name(input_2.class_id,input_2.prop_id)
             }
-            let junction_id=this.junction_cache.find(j=>full_relation_match(j.sides,[input_1,input_2]))?.id;
-    
-            const date_added=Date.now();
+
+            const junction_id=this.junction_cache.find(j=>full_relation_match(j.sides,[input_1,input_2]))?.id;
 
             if(junction_id){
-                this.db.prepare(`
-                    INSERT INTO junction_${junction_id} 
-                    ("${column_names.input_1}", "${column_names.input_2}",date_added) 
-                    VALUES (${input_1.item_id},${input_2.item_id},${date_added})
-                `).run();
+                if(change=='add'){
+                    const date_added=Date.now();
+                    this.db.prepare(`
+                        INSERT INTO junction_${junction_id} 
+                        ("${column_names.input_1}", "${column_names.input_2}",date_added) 
+                        VALUES (${input_1.item_id},${input_2.item_id},${date_added})
+                    `).run();
+                }else if (change=='remove'){
+                    this.db.prepare(`
+                        DELETE FROM junction_${junction_id} 
+                        WHERE "${column_names.input_1}" = ${input_1.item_id}
+                        AND "${column_names.input_2}" = ${input_2.item_id}`
+                    ).run();
+                }
             }else{
                 throw Error('Something went wrong - junction table for relationship not found')
             }
+            
+    
         }
 
         
