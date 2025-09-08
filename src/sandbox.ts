@@ -373,7 +373,7 @@ async function grocery_queries() {
   function test_item_range(){
     if(!project) return;
     const items_in_range = project.retrieve_class_items({ class_id: 1, pagination: { 
-      property_range:[],
+      property_range:[3],
       item_range:[20,17,15]
     } });
     console.log('items_in_range',items_in_range)

@@ -895,8 +895,8 @@ export default class Project {
             }
         }
         let orderby = `ORDER BY ${class_string}.system_order`;
-        const data_prop_sql_string = data_properties.map((p) => `[user_${p.name}]`).join(',');
-        const table_selection = pagination.property_range == 'all' ? `[class_${class_name}].*` : `system_id,system_order,${data_prop_sql_string}`;
+        const data_prop_sql_string = data_properties.length > 0 ? ', ' + data_properties.map((p) => `[user_${p.name}]`).join(',') : '';
+        const table_selection = pagination.property_range == 'all' ? `[class_${class_name}].*` : `system_id,system_order${data_prop_sql_string}`;
         let filter_by_items = '';
         if (pagination.item_range && pagination.item_range !== 'all') {
             filter_by_items = `WHERE system_id in (${pagination.item_range.join(',')})`;
@@ -910,6 +910,7 @@ export default class Project {
             ${cte_joins.join(' ')}
             ${filter_by_items}
             ${orderby}`;
+        console.log('query', query);
         // possibly elaborate this any type a little more in the future, e.g. a CellValue or SQLCellValue type that expects some wildcards
         let items = this.db.prepare(query).all();
         let stringified_properties = class_data.properties.filter(a => a.type == 'relation' || can_have_multiple_values(a.max_values));
