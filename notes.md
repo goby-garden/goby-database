@@ -8,6 +8,19 @@
 
 ### Running notes
 
+#### <span class="date">9/7/2025</span>
+
+Today I added the ability to narrow the output of `retrieve_class_items` by specific properties as well as specific items, in order to support the “refresh” of data that the interface has determined is out-of-date. 
+
+My next agenda item is another feature “ordered up” as it were by goby-interface: the ability to filter the items retrieved by those which still have space in a given relation property to accept more relations. This will be used to display the possible selection options for relation property. 
+
+Since I’m not paginating these in the interface right now, I could also more simply include a prop which counts how many selections each item currently has, and then filter by max value in the interface. but this is elaborate enough that I figure I should just go ahead and figure out how to do it the right way, filtering directly in the SQLite query.
+
+To do this, I think `retrieve_class_items` is going to have to accept a list of conditions (the first of which will be this “property can accept more values” condition), and handle them each in a custom way. This will require adding custom computed columns to the select, and additional WHERE rule that evaluate the computed columns. In the case of this first condition:
+
+- a custom computed column, reusing a lot of my existing relation/junction table logic, to count the items selected for a given property instead of listing and formatting them as json.
+- a WHERE rule which checks if the computed column is below the max for the property.
+
 #### <span class="date">9/1/2025</span>
 
 Some scattered thoughts as I’m working today:
@@ -16,7 +29,7 @@ I’ve reached a point where I can save new relationships back to a project data
 
 The customization of relation sort order is a larger technical challenge that I may have to tackle at some point. It sort of contradicts the whole point of the junction table approach by necessitating that data be stored twice or more (to specify the order on each property participating in a relationship). 
 
-But for now I think a simple thing I can do is just add a primary key to my junction tables, and specify that this be used to sort relations, that way it will privilage time added.
+But for now I think a simple thing I can do is just add a date_added timestamp column to my junction tables, and specify that this be used to sort relations, that way it will privilage recency.
 
 ---
 

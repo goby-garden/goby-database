@@ -1163,8 +1163,6 @@ export default class Project{
             ${cte_joins.join(' ')}
             ${filter_by_items}
             ${orderby}`;
-        
-        console.log('query',query);
 
         // possibly elaborate this any type a little more in the future, e.g. a CellValue or SQLCellValue type that expects some wildcards
         let items=this.db.prepare<[],ClassRow>(query).all();
