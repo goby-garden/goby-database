@@ -836,8 +836,11 @@ export default class Project {
             else if (pagination.property_range == 'slim') {
                 return label_prop_ids.includes(prop.id);
             }
-            else {
+            else if (pagination.property_range.length > 0) {
                 return pagination.property_range.includes(prop.id);
+            }
+            else {
+                return true;
             }
         });
         const relation_properties = retrieved_properties.filter(a => a.type == 'relation');
