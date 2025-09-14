@@ -70,12 +70,31 @@ export default class Project {
     delete_item_from_root(id: number): void;
     action_set_root_item_value(id: number, value: string): void;
     lookup_class(class_id: number): ClassData;
-    action_add_row(class_id: number): number;
+    /**
+     * Creates a new item and adds it to the class you indicate
+     * @param class_id - class you want to add new item to
+     * @param property_values - any properties you want to fill in as you create this item (data props only for now)
+     * @returns - id of new item
+     */
+    action_add_row(class_id: number, property_values?: {
+        property_id: number;
+        value: any;
+    }[]): number;
     get_next_order(table_name: string): number;
-    action_set_property_values(class_id: number, item_id: number, changes: {
+    /**
+     * Sets 1 or more data property values for a given class item.
+     * @param class_id - class of item
+     * @param item_id - id of item
+     * @param changes - array of data properties to be set
+     */
+    action_edit_item_data(class_id: number, item_id: number, changes: {
         property_id: number;
         value: any;
     }[]): void;
+    /**
+     * Adds/removes relations between items/item properties
+     * @param relations - list of pairs of items for which relations should be added or removed between specified properties
+     */
     action_edit_relations(relations: {
         change: 'add' | 'remove';
         sides: [input_1: ItemRelationSide, input_2: ItemRelationSide];

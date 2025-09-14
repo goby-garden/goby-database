@@ -1,6 +1,9 @@
 export function defined(v) {
     return v !== undefined && v !== null;
 }
+export const text_data_types = ['string', 'resource'];
+export const integer_data_types = ['boolean'];
+export const real_data_types = ['number'];
 // given the type above,
 // check if two relations share class ids on both sides
 // and share a property id on at least one side
@@ -102,5 +105,45 @@ export function readable_junctionlist(relationships, classlist) {
     return relationships.map((r) => {
         return readable_sides(r.sides, classlist);
     });
+}
+export function validate_data_value(input, data_type, max_values) {
+    const multiple = max_values == null || max_values > 1;
+    const values = multiple ? input : [input];
+    if (!Array.isArray(values)) {
+        return { valid: false, message: 'Expecting array, got single value' };
+    }
+    const validated_values = [];
+    for (let value of values) {
+        if (real_data_types.includes(data_type) || integer_data_types.includes(data_type)) {
+            if (data_type == 'boolean') {
+                if (typeof value == 'boolean' || [0, 1].includes(value)) {
+                    validated_values.push(+value);
+                }
+                else {
+                    return { valid: false, message: `Expecting boolean or binary integer, got "${value}" (${typeof value})` };
+                }
+            }
+            else if (typeof value == 'number') {
+                validated_values.push(value);
+            }
+            else {
+                return { valid: false, message: `Expecting number, got "${value}" (${typeof value})` };
+            }
+        }
+        else if (text_data_types.includes(data_type)) {
+            // NOTE: could come back to validate resource as links/filepaths later, but leaving unopinionated for now
+            if (typeof value == 'string') {
+                validated_values.push(value);
+            }
+            else {
+                return { valid: false, message: `Expecting string, got "${value}" (${typeof value})` };
+            }
+        }
+    }
+    const output = multiple ? JSON.stringify(validated_values) : validated_values[0];
+    return {
+        valid: true,
+        output
+    };
 }
 //# sourceMappingURL=utils.js.map

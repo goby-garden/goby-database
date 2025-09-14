@@ -198,7 +198,6 @@ function create_groceries_project() {
                     const rows = tsvParse(tsv);
                     table.tsv_parsed = rows;
                     for (let row of rows) {
-                        const item_id = project.action_add_row(class_id);
                         const changes = data_cols.map(({ name, property_id }) => ({
                             property_id,
                             value: row[name] == "FALSE"
@@ -207,7 +206,7 @@ function create_groceries_project() {
                                     ? true
                                     : row[name],
                         }));
-                        project.action_set_property_values(class_id, item_id, changes);
+                        project.action_add_row(class_id, changes);
                     }
                 }
             }
@@ -300,9 +299,16 @@ function create_groceries_project() {
 function grocery_queries() {
     return __awaiter(this, void 0, void 0, function* () {
         const project = yield create_groceries_project(true, 0);
+        test_full_return();
         // test_slim_return();
         // test_removing_relation();
-        test_item_range();
+        // test_item_range();
+        function test_full_return() {
+            if (!project)
+                return;
+            const full_return = project.retrieve_class_items({ class_id: 1 });
+            console.log('full_return', full_return);
+        }
         function test_slim_return() {
             if (!project)
                 return;

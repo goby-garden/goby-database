@@ -1,8 +1,5 @@
 import Database from 'better-sqlite3';
-import { defined, partial_relation_match, full_relation_match, can_have_multiple_values, junction_col_name, side_match, two_way, edit_has_valid_sides, readable_edit } from './utils.js';
-const text_data_types = ['string', 'resource'];
-const integer_data_types = ['boolean'];
-const real_data_types = ['number'];
+import { defined, partial_relation_match, full_relation_match, can_have_multiple_values, junction_col_name, side_match, two_way, edit_has_valid_sides, readable_edit, text_data_types, integer_data_types, real_data_types, validate_data_value } from './utils.js';
 export default class Project {
     constructor(source) {
         this.class_cache = [];
@@ -689,14 +686,42 @@ export default class Project {
             throw new Error('Cannot find class in class list.');
         return class_data;
     }
-    action_add_row(class_id) {
+    /**
+     * Creates a new item and adds it to the class you indicate
+     * @param class_id - class you want to add new item to
+     * @param property_values - any properties you want to fill in as you create this item (data props only for now)
+     * @returns - id of new item
+     */
+    action_add_row(class_id, property_values = []) {
         const class_data = this.lookup_class(class_id);
         let class_name = class_data.name;
         //first add new row to root and get id
         const root_id = this.create_item_in_root({ type: 'class_' + class_id });
+        // NOTE: I will need a second handler in the future if I want to support relation props here
+        // (probably utilizing action_edit_relations)
+        const data_property_sql = property_values.reduce((obj, current) => {
+            const corresponding_prop = class_data.properties.find((prop) => {
+                return prop.id == current.property_id;
+            });
+            if ((corresponding_prop === null || corresponding_prop === void 0 ? void 0 : corresponding_prop.type) == 'data') {
+                const validated = validate_data_value(current.value, corresponding_prop.data_type, corresponding_prop.max_values);
+                if (validated.valid) {
+                    const v = text_data_types.includes(corresponding_prop.data_type) ? `'${validated.output}'` : validated.output;
+                    obj.columns += `, [user_${corresponding_prop.name}]`;
+                    obj.values += `, ${v}`;
+                }
+                else {
+                    console.log(`Did not modify ${corresponding_prop.name} for item: ${validated.message}`);
+                }
+            }
+            return obj;
+        }, {
+            columns: '',
+            values: ''
+        });
         //get the last item in class table order and use it to get the order for the new item
         const new_order = this.get_next_order(`[class_${class_name}]`);
-        this.db.prepare(`INSERT INTO [class_${class_name}] (system_id, system_order) VALUES (${root_id},${new_order})`).run();
+        this.db.prepare(`INSERT INTO [class_${class_name}] (system_id, system_order${data_property_sql.columns}) VALUES (${root_id},${new_order}${data_property_sql.values})`).run();
         return root_id;
     }
     get_next_order(table_name) {
@@ -704,15 +729,21 @@ export default class Project {
         const new_order = last_ordered_item ? last_ordered_item.system_order + 1000 : 0;
         return new_order;
     }
-    // NOTE: seems like there should be a way to pair down "value:any" in params, maybe at least make it one of a few value types
-    action_set_property_values(class_id, item_id, changes) {
+    /**
+     * Sets 1 or more data property values for a given class item.
+     * @param class_id - class of item
+     * @param item_id - id of item
+     * @param changes - array of data properties to be set
+     */
+    action_edit_item_data(class_id, item_id, changes) {
+        // NOTE: seems like there should be a way to pair down "value:any" in params, maybe at least make it one of a few value types
         const class_data = this.lookup_class(class_id);
         const sql_column_inserts = [];
         for (let change of changes) {
             const prop_data = class_data.properties.find((p) => p.id == change.property_id);
             if (prop_data && prop_data.type == 'data') {
                 // const data_type=prop_data.data_type;
-                const cell_value = validate(change.value, prop_data.data_type, prop_data.max_values);
+                const cell_value = validate_data_value(change.value, prop_data.data_type, prop_data.max_values);
                 if (cell_value.valid) {
                     sql_column_inserts.push({
                         column_name: `[user_${prop_data.name}]`,
@@ -731,47 +762,11 @@ export default class Project {
         const set_statements = sql_column_inserts.map((p) => `${p.column_name} = ?`).join(',');
         const insert_statement = `UPDATE [class_${class_data.name}] SET ${set_statements} WHERE system_id=${item_id}`;
         this.db.prepare(insert_statement).run(params);
-        function validate(input, data_type, max_values) {
-            const multiple = max_values == null || max_values > 1;
-            const values = multiple ? input : [input];
-            if (!Array.isArray(values)) {
-                return { valid: false, message: 'Expecting array, got single value' };
-            }
-            const validated_values = [];
-            for (let value of values) {
-                if (real_data_types.includes(data_type) || integer_data_types.includes(data_type)) {
-                    if (data_type == 'boolean') {
-                        if (typeof value == 'boolean' || [0, 1].includes(value)) {
-                            validated_values.push(+value);
-                        }
-                        else {
-                            return { valid: false, message: `Expecting boolean or binary integer, got "${value}" (${typeof value})` };
-                        }
-                    }
-                    else if (typeof value == 'number') {
-                        validated_values.push(value);
-                    }
-                    else {
-                        return { valid: false, message: `Expecting number, got "${value}" (${typeof value})` };
-                    }
-                }
-                else if (text_data_types.includes(data_type)) {
-                    // NOTE: could come back to validate resource as links/filepaths later, but leaving unopinionated for now
-                    if (typeof value == 'string') {
-                        validated_values.push(value);
-                    }
-                    else {
-                        return { valid: false, message: `Expecting string, got "${value}" (${typeof value})` };
-                    }
-                }
-            }
-            const output = multiple ? JSON.stringify(validated_values) : validated_values[0];
-            return {
-                valid: true,
-                output
-            };
-        }
     }
+    /**
+     * Adds/removes relations between items/item properties
+     * @param relations - list of pairs of items for which relations should be added or removed between specified properties
+     */
     action_edit_relations(relations) {
         // NOTE: changes to make to this in the future:
         //  - for input readability, allow class_name and prop_name as input options, assuming they’re enforced as unique, and use them to look up IDs
@@ -910,7 +905,6 @@ export default class Project {
             ${cte_joins.join(' ')}
             ${filter_by_items}
             ${orderby}`;
-        console.log('query', query);
         // possibly elaborate this any type a little more in the future, e.g. a CellValue or SQLCellValue type that expects some wildcards
         let items = this.db.prepare(query).all();
         let stringified_properties = class_data.properties.filter(a => a.type == 'relation' || can_have_multiple_values(a.max_values));
