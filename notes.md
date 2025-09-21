@@ -8,6 +8,20 @@
 
 ### Running notes
 
+#### <span class="date">9/20/2025</span>
+
+Steps to add the filtering feature to `retrieve_class_items` that I mentioned in the 9/7/2025 entry:
+
+- [x] change the pagination type to add support for conditions
+    - add `under_property_max` condition, which takes a relation property ID and makes sure only items which have space to add more selections to the specified property are added
+- [x] add the ability to include CTEs for props which aren’t part of the final return (to be used for filtering)
+- [x] add a `COUNT()` column to the CTE “group by” statements (even if condition is not present), which will count the selections for each item after the unions (surprisingly dead simple!)
+- [x] modify the `WHERE` clause in the outer select to allow multiple conditions besides item_range
+- [x] when the `under_property_max` condition is present, add it to the `WHERE` clause as a comparison of the COUNT column to the max for that prop
+
+(as I am about to push this, I’ve finished all these and the feature is working in my cursory testing)
+
+
 #### <span class="date">9/7/2025</span>
 
 Today I added the ability to narrow the output of `retrieve_class_items` by specific properties as well as specific items, in order to support the “refresh” of data that the interface has determined is out-of-date. 

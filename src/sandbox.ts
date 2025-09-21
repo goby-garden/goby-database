@@ -261,8 +261,6 @@ async function create_groceries_project(log_only = false, delay_time = 0) {
       Category: [{ class: ingredient_type }],
     };
 
-    const relation_queue: [input_1: ItemRelationSide, input_2: ItemRelationSide][] = [];
-
     for (let { properties, tsv_parsed, class_data } of tables) {
 
       if (tsv_parsed && defined(class_data)) {
@@ -357,22 +355,39 @@ async function create_groceries_project(log_only = false, delay_time = 0) {
 async function grocery_queries() {
   const project = await create_groceries_project(true, 0);
 
-  test_full_return();
+  // test_full_return();
   // test_slim_return();
   // test_removing_relation();
   // test_item_range();
+  test_max_condition();
 
   function test_full_return(){
     if(!project) return;
     const full_return = project.retrieve_class_items({ class_id: 1 });
     console.log('full_return',full_return)
   }
+  
 
     
   function test_slim_return(){
     if(!project) return;
     const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
     console.log('slim_return',slim_return)
+  }
+
+  function test_max_condition(){
+    if(!project) return;
+    const items = project.retrieve_class_items({ 
+      class_id: 2, 
+      pagination: { 
+        property_range: 'slim',
+        conditions:[
+          {name:'under_property_max',property_id:5}
+        ] 
+      } 
+    });
+
+    console.log('items',items)
   }
 
   function test_item_range(){

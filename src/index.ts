@@ -72,7 +72,8 @@ export default class Project{
           console.log('opened goby database');
         }
        
-        //prepared statements with arguments so my code isn't as verbose elsewhere
+        // prepared statements with arguments so my code isn't as verbose elsewhere
+        // obviously can only do this for actions on determinate columns
         this.run={
             begin:this.db.prepare('BEGIN IMMEDIATE'),
             commit:this.db.prepare('COMMIT'),
@@ -1045,36 +1046,44 @@ export default class Project{
 
     // MARKER: modify item retrieval
     retrieve_class_items({class_id,class_name,class_data,pagination={}}:{class_id:number,class_name?:string,class_data?:ClassData,pagination?:ItemPagination}):PaginatedItems{
+        
+        // 1. DETERMINE COLUMNS AND ROWS TO RETRIEVE ---------------------------------------------------
+        
         const pagination_defaults:ItemPagination={
             page_size:null,
             property_range:'all',
-            item_range:'all'
+            item_range:'all',
+            conditions:[]
         }
 
+        // set pagination rules by overriding defaults with any custom settings
         pagination = {
             ...pagination_defaults,
             ...pagination
         }
         
+        // get class data+name if not already passed in
         if(class_name==undefined || class_data == undefined){
             class_data=this.lookup_class(class_id);
             class_name=class_data.name;
         };
 
-        const class_string=`[class_${class_name}]`;
-
-        // joined+added at beginning of the query, built from relations
-        const cte_strings=[];
-
-        // joined+added near the end of the query, built from relations
-        const cte_joins=[];
-
-        // joined+added between SELECT and FROM, built from relations
-        const relation_selections=[];
-
+        // gets the label prop for this class
         const label_prop_ids=class_data.metadata.label?.properties ?? []; 
 
-        // if a property_range is defined, first filter class_data.properties by those IDs
+
+         
+        const where_conditions=[];
+
+
+        if(pagination.item_range && pagination.item_range!=='all' ){
+            where_conditions.push(`system_id in (${pagination.item_range.join(',')})`)
+        }
+
+
+       
+
+        // if a property_range is defined, first filter properties retrieved by those IDs
         const retrieved_properties=class_data.properties.filter((prop)=>{
             if(pagination.property_range=='all'||!pagination.property_range){
                 return true;
@@ -1085,29 +1094,74 @@ export default class Project{
             }else{
                 return true;
             }
-
         })
 
+
+         const cte_properties:(RelationProperty & {cte_only:boolean})[]=[];
+
+        for(let condition of (pagination.conditions || [])){
+            if(condition.name=='under_property_max'){
+                const property=class_data.properties.find((p)=>p.id==condition.property_id);
+                if(property?.type=='relation' && property.max_values!==null){
+
+                    if(!cte_properties.some((p)=>p.id==condition.property_id) && !retrieved_properties.some((p)=>p.id==condition.property_id)){
+                       // if this property isn’t retrieved directly, we have to make sure a CTE is created for it, just so we can count the values
+                       cte_properties.push({...property,cte_only:true});
+                    }
+
+                    // add a condition that counts the items selected by this item for this property
+                    where_conditions.push(`COALESCE([count_user_${property.name}],0) < ${property.max_values}`);
+                }
+            }
+        }
+
+
+
+        // separates these, since they are handled separately in the query
         const relation_properties=retrieved_properties.filter(a=>a.type=='relation');
         const data_properties=retrieved_properties.filter(a=>a.type=='data');
 
-        for (let prop of relation_properties){
+        // 2. GENERATE SQLITE QUERY --------------------------------------------------
+
+        // class table name in db
+        const class_string=`[class_${class_name}]`;
+        
+
+        // 2a. Handle relation properties by generating common table expressions (ctes)
+
+        // joined+added at beginning of the query, built from relations
+        const cte_strings=[];
+
+        // joined+added near the end of the query, built from relations
+        const cte_joins=[];
+
+        // joined+added between SELECT and FROM, built from relations
+        const relation_selections=[];
+        
+
+        for (let prop of [...relation_properties,...cte_properties]){
             const target_selects=[];
-            let property_junction_column_name=junction_col_name(class_id,prop.id);
+            // name of column for this class/property in junction table
+            const property_junction_column_name=junction_col_name(class_id,prop.id);
     
+            // loop through each target
             if(prop.relation_targets.length>0){
                 for(let i = 0; i < prop.relation_targets.length; i++){
     
                     // find the side that does not match both the class and prop IDs
-                    let target=prop.relation_targets[i];
+                    const target=prop.relation_targets[i];
                     const target_class=this.class_cache.find((a)=>a.id==target?.class_id);
                     if(target&&target_class){
+                        // target column name in junction table
                         let target_junction_column_name=junction_col_name(target.class_id,target.prop_id);
                         
-                        // NOTE: as mentioned elsewhere, possibly allow multiple label props
+                        
+                        // get label of label property in target prop
                         const target_label_id=target_class?.metadata?.label?.properties[0];
                         const target_label=target_class?.properties.find((p)=>p.id==target_label_id);
                         const label_sql_string=target_label?`,'user_${target_label.name}',target_class."user_${target_label.name}"`:'';
+                        // NOTE: as mentioned elsewhere, possibly allow multiple label props
+
 
                         let junction_id=target.junction_id;
                         let target_select=`
@@ -1127,7 +1181,7 @@ export default class Project{
                 
                 // uses built-in aggregate json function instead of group_concat craziness
                 const cte=`[${prop.id}_cte] AS (
-                    SELECT "${property_junction_column_name}", json_group_array( json(target_data) ) AS [user_${prop.name}]
+                    SELECT "${property_junction_column_name}", json_group_array( json(target_data) ) AS [user_${prop.name}], COUNT(1) AS [count_user_${prop.name}]
                     FROM 
                     (
                         ${target_selects.join(` 
@@ -1140,10 +1194,10 @@ export default class Project{
                 )`
                 
                 cte_strings.push(cte);
-                relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
+                if(!("cte_only" in prop && prop.cte_only)) relation_selections.push(`[${prop.id}_cte].[user_${prop.name}]`);
                 cte_joins.push(`LEFT JOIN [${prop.id}_cte] ON [${prop.id}_cte]."${property_junction_column_name}" = ${class_string}.system_id`)
             }else{
-                relation_selections.push(`'[]' AS [user_${prop.name}]`);
+                if(!("cte_only" in prop && prop.cte_only)) relation_selections.push(`'[]' AS [user_${prop.name}]`);
             }
             
 
@@ -1155,14 +1209,12 @@ export default class Project{
         const table_selection = pagination.property_range=='all'?`[class_${class_name}].*`:`system_id,system_order${data_prop_sql_string}`;
 
 
-        let filter_by_items='';
-        if(pagination.item_range && pagination.item_range!=='all' ){
-            filter_by_items=`WHERE system_id in (${pagination.item_range.join(',')})`;
-        }
+
+       
+        const where_string=where_conditions.length>0?`WHERE ${where_conditions.map((w)=>`(${w})`).join(' AND ')}`:'';
 
 
-
-        let comma_break=`,
+        const comma_break=`,
             `
 
         let query=`
@@ -1170,7 +1222,7 @@ export default class Project{
             SELECT ${table_selection} ${relation_selections.length>0?', '+relation_selections.join(`, `):''}
             FROM [class_${class_name}]
             ${cte_joins.join(' ')}
-            ${filter_by_items}
+            ${where_string}
             ${orderby}`;
 
         // possibly elaborate this any type a little more in the future, e.g. a CellValue or SQLCellValue type that expects some wildcards

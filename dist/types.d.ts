@@ -142,6 +142,10 @@ export type ClassData = {
     properties: Property[];
 };
 export type ClassList = ClassData[];
+type ConditionUnderPropertyMax = {
+    name: 'under_property_max';
+    property_id: number;
+};
 export type ItemPagination = {
     page_size?: number | null;
     page_range?: [start: number, end?: number];
@@ -149,6 +153,7 @@ export type ItemPagination = {
     property_range?: number[] | 'slim' | 'all';
     /** Filter by item IDs. If not specified, pulls all */
     item_range?: number[] | 'all';
+    conditions?: ConditionUnderPropertyMax[];
 };
 export type PaginatedItems = ItemPagination & {
     loaded: ClassRow[];

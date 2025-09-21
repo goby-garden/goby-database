@@ -232,7 +232,6 @@ function create_groceries_project() {
                 Meal: [{ class: meals }],
                 Category: [{ class: ingredient_type }],
             };
-            const relation_queue = [];
             for (let { properties, tsv_parsed, class_data } of tables) {
                 if (tsv_parsed && defined(class_data)) {
                     const class_id = class_data.id;
@@ -299,10 +298,11 @@ function create_groceries_project() {
 function grocery_queries() {
     return __awaiter(this, void 0, void 0, function* () {
         const project = yield create_groceries_project(true, 0);
-        test_full_return();
+        // test_full_return();
         // test_slim_return();
         // test_removing_relation();
         // test_item_range();
+        test_max_condition();
         function test_full_return() {
             if (!project)
                 return;
@@ -314,6 +314,20 @@ function grocery_queries() {
                 return;
             const slim_return = project.retrieve_class_items({ class_id: 1, pagination: { property_range: 'slim' } });
             console.log('slim_return', slim_return);
+        }
+        function test_max_condition() {
+            if (!project)
+                return;
+            const items = project.retrieve_class_items({
+                class_id: 2,
+                pagination: {
+                    property_range: 'slim',
+                    conditions: [
+                        { name: 'under_property_max', property_id: 5 }
+                    ]
+                }
+            });
+            console.log('items', items);
         }
         function test_item_range() {
             if (!project)
