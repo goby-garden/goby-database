@@ -359,7 +359,7 @@ async function grocery_queries() {
   // test_slim_return();
   // test_removing_relation();
   // test_item_range();
-  test_max_condition();
+  // test_max_condition();
 
   function test_full_return(){
     if(!project) return;

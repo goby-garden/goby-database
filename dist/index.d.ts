@@ -97,7 +97,11 @@ export default class Project {
      */
     action_edit_relations(relations: {
         change: 'add' | 'remove';
-        sides: [input_1: ItemRelationSide, input_2: ItemRelationSide];
+        sides: [input_1: ItemRelationSide & {
+            order?: number;
+        }, input_2: ItemRelationSide & {
+            order?: number;
+        }];
     }[]): void;
     retrieve_class_items({ class_id, class_name, class_data, pagination }: {
         class_id: number;

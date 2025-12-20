@@ -599,12 +599,20 @@ export default class Project {
         let id = (_a = this.db.prepare('SELECT id FROM system_junctionlist ORDER BY id DESC').get()) === null || _a === void 0 ? void 0 : _a.id;
         if (typeof id !== 'number')
             throw new Error('Something went wrong creating a new relationship');
+        const side_0_col = junction_col_name(sides[0].class_id, sides[0].prop_id);
+        const side_1_col = junction_col_name(sides[1].class_id, sides[1].prop_id);
+        const columns = [
+            `"${side_0_col}" INTEGER`,
+            `"${side_1_col}" INTEGER`,
+        ];
+        // for each side, check if it has a prop
+        // if it does, add column for its order
+        if (defined(sides[0].prop_id))
+            columns.push(`"${side_0_col}_order" REAL`);
+        if (defined(sides[1].prop_id))
+            columns.push(`"${side_1_col}_order" REAL`);
         // creates table
-        this.create_table('junction', id, [
-            `"${junction_col_name(sides[0].class_id, sides[0].prop_id)}" INTEGER`,
-            `"${junction_col_name(sides[1].class_id, sides[1].prop_id)}" INTEGER`,
-            `date_added INTEGER`
-        ]);
+        this.create_table('junction', id, columns);
         return id;
     }
     transfer_connections(source, target) {
@@ -780,24 +788,69 @@ export default class Project {
                 input_2: junction_col_name(input_2.class_id, input_2.prop_id)
             };
             const junction_id = (_a = this.junction_cache.find(j => full_relation_match(j.sides, [input_1, input_2]))) === null || _a === void 0 ? void 0 : _a.id;
-            if (junction_id) {
-                if (change == 'add') {
-                    const date_added = Date.now();
-                    this.db.prepare(`
-                        INSERT INTO junction_${junction_id} 
-                        ("${column_names.input_1}", "${column_names.input_2}",date_added) 
-                        VALUES (${input_1.item_id},${input_2.item_id},${date_added})
-                    `).run();
-                }
-                else if (change == 'remove') {
-                    this.db.prepare(`
-                        DELETE FROM junction_${junction_id} 
-                        WHERE "${column_names.input_1}" = ${input_1.item_id}
-                        AND "${column_names.input_2}" = ${input_2.item_id}`).run();
-                }
-            }
-            else {
+            if (!defined(junction_id)) {
                 throw Error('Something went wrong - junction table for relationship not found');
+            }
+            if (change == 'add') {
+                const column_value_set = [
+                    {
+                        column: `"${column_names.input_1}"`,
+                        value: input_1.item_id
+                    },
+                    {
+                        column: `"${column_names.input_2}"`,
+                        value: input_2.item_id
+                    }
+                ];
+                sides.forEach((side, s) => {
+                    var _a, _b, _c;
+                    // for each side, check if it has a prop id
+                    if (defined(side.prop_id)) {
+                        // if it does, prepare to add a column entry for it
+                        const column = `"${s == 0 ? column_names.input_1 : column_names.input_2}_order"`;
+                        let value = 0;
+                        // check if it has an order set
+                        if (defined(side.order)) {
+                            // if so, use that for the column entry
+                            value = side.order;
+                        }
+                        else {
+                            // if not, you have to do a lookup of that property value for that item, and get the last order value
+                            const class_data = this.lookup_class(side.class_id);
+                            const item = (_a = this.retrieve_class_items({
+                                class_id: side.class_id,
+                                class_data,
+                                pagination: {
+                                    item_range: [side.item_id],
+                                    property_range: [side.prop_id]
+                                }
+                            }).loaded) === null || _a === void 0 ? void 0 : _a[0];
+                            const prop_name = (_b = class_data.properties.find((p) => p.id == side.prop_id)) === null || _b === void 0 ? void 0 : _b.name;
+                            const prop_selections = defined(prop_name) && item ? item[`user_${prop_name}`] : [];
+                            if (Array.isArray(prop_selections)) {
+                                const last_item_order = (_c = prop_selections === null || prop_selections === void 0 ? void 0 : prop_selections.at(-1)) === null || _c === void 0 ? void 0 : _c.system_order;
+                                if (typeof last_item_order == 'number') {
+                                    value = last_item_order + 1000;
+                                }
+                            }
+                        }
+                        column_value_set.push({
+                            column,
+                            value
+                        });
+                    }
+                });
+                this.db.prepare(`
+                    INSERT INTO junction_${junction_id} 
+                    (${column_value_set.map((a) => a.column).join(',')}) 
+                    VALUES (${column_value_set.map((a) => a.value).join(',')})
+                `).run();
+            }
+            else if (change == 'remove') {
+                this.db.prepare(`
+                    DELETE FROM junction_${junction_id} 
+                    WHERE "${column_names.input_1}" = ${input_1.item_id}
+                    AND "${column_names.input_2}" = ${input_2.item_id}`).run();
             }
         }
         // NOTE: should this trigger a refresh to items?
@@ -890,7 +943,12 @@ export default class Project {
                         let target_select = `
                         SELECT 
                             "${property_junction_column_name}", 
-                            json_object('class_id',${target.class_id},'system_id',junction."${target_junction_column_name}"${label_sql_string}) AS target_data, junction.date_added AS date_added
+                            json_object(
+                                'class_id',${target.class_id},
+                                'system_id',junction."${target_junction_column_name}",
+                                'system_order',junction."${property_junction_column_name}_order"
+                                ${label_sql_string}
+                            ) AS target_data, junction."${property_junction_column_name}_order" AS relation_order
                             FROM junction_${junction_id} AS junction
                             LEFT JOIN "class_${target_class === null || target_class === void 0 ? void 0 : target_class.name}" AS target_class ON junction."${target_junction_column_name}" =  target_class.system_id
                         `;
@@ -908,7 +966,7 @@ export default class Project {
                         ${target_selects.join(` 
                         UNION 
                         `)}
-                        ORDER BY date_added
+                        ORDER BY relation_order
                     )
                     GROUP BY "${property_junction_column_name}"
 
