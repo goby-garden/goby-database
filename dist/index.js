@@ -773,7 +773,8 @@ export default class Project {
         this.db.prepare(insert_statement).run(params);
     }
     /**
-     * Adds/removes relations between items/item properties
+     * Adds/removes relations between items/item properties.
+     * Can create new items in a class if a label is specified instead of an item id.
      * @param relations - list of pairs of items for which relations should be added or removed between specified properties
      */
     action_edit_relations(relations) {
@@ -782,16 +783,45 @@ export default class Project {
         //  - enforce max_values here
         var _a;
         for (let { change, sides } of relations) {
-            const [input_1, input_2] = sides;
+            let [input_1, input_2] = sides;
             const column_names = {
                 input_1: junction_col_name(input_1.class_id, input_1.prop_id),
                 input_2: junction_col_name(input_2.class_id, input_2.prop_id)
             };
-            const junction_id = (_a = this.junction_cache.find(j => full_relation_match(j.sides, [input_1, input_2]))) === null || _a === void 0 ? void 0 : _a.id;
+            const junction_id = (_a = this.junction_cache.find(j => full_relation_match(j.sides, sides))) === null || _a === void 0 ? void 0 : _a.id;
             if (!defined(junction_id)) {
                 throw Error('Something went wrong - junction table for relationship not found');
             }
             if (change == 'add') {
+                // if items referenced by the input don’t yet have associated IDs, create them
+                const sides_registered = sides.map((input) => {
+                    var _a;
+                    if ("item_id" in input) {
+                        return input;
+                    }
+                    else {
+                        const { class_id, prop_id, order, label } = input;
+                        const class_data = this.lookup_class(class_id);
+                        const label_prop_id = (_a = class_data.metadata.label) === null || _a === void 0 ? void 0 : _a.properties[0];
+                        const property_values = [];
+                        if (label_prop_id) {
+                            property_values.push({
+                                property_id: label_prop_id,
+                                value: label
+                            });
+                        }
+                        const item_id = this.action_add_row(input.class_id, property_values);
+                        return {
+                            registered: true,
+                            class_id,
+                            prop_id,
+                            item_id,
+                            order
+                        };
+                    }
+                });
+                input_1 = sides_registered[0];
+                input_2 = sides_registered[1];
                 const column_value_set = [
                     {
                         column: `"${column_names.input_1}"`,
@@ -802,7 +832,7 @@ export default class Project {
                         value: input_2.item_id
                     }
                 ];
-                sides.forEach((side, s) => {
+                sides_registered.forEach((side, s) => {
                     var _a, _b, _c;
                     // for each side, check if it has a prop id
                     if (defined(side.prop_id)) {
@@ -847,10 +877,15 @@ export default class Project {
                 `).run();
             }
             else if (change == 'remove') {
-                this.db.prepare(`
-                    DELETE FROM junction_${junction_id} 
-                    WHERE "${column_names.input_1}" = ${input_1.item_id}
-                    AND "${column_names.input_2}" = ${input_2.item_id}`).run();
+                if (("item_id" in input_1) && ("item_id" in input_2)) {
+                    this.db.prepare(`
+                        DELETE FROM junction_${junction_id} 
+                        WHERE "${column_names.input_1}" = ${input_1.item_id}
+                        AND "${column_names.input_2}" = ${input_2.item_id}`).run();
+                }
+                else {
+                    console.log('skipped relation delete (either item input is missing an ID)');
+                }
             }
         }
         // NOTE: should this trigger a refresh to items?
@@ -938,6 +973,7 @@ export default class Project {
                         const target_label_id = (_d = (_c = target_class === null || target_class === void 0 ? void 0 : target_class.metadata) === null || _c === void 0 ? void 0 : _c.label) === null || _d === void 0 ? void 0 : _d.properties[0];
                         const target_label = target_class === null || target_class === void 0 ? void 0 : target_class.properties.find((p) => p.id == target_label_id);
                         const label_sql_string = target_label ? `,'user_${target_label.name}',target_class."user_${target_label.name}"` : '';
+                        const target_prop_string = defined(target.prop_id) ? `,'prop_id',${target.prop_id}` : '';
                         // NOTE: as mentioned elsewhere, possibly allow multiple label props
                         let junction_id = target.junction_id;
                         let target_select = `
@@ -947,6 +983,7 @@ export default class Project {
                                 'class_id',${target.class_id},
                                 'system_id',junction."${target_junction_column_name}",
                                 'system_order',junction."${property_junction_column_name}_order"
+                                ${target_prop_string}
                                 ${label_sql_string}
                             ) AS target_data, junction."${property_junction_column_name}_order" AS relation_order
                             FROM junction_${junction_id} AS junction

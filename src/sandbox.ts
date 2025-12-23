@@ -355,10 +355,10 @@ async function grocery_queries() {
 
   // test_full_return();
   // test_slim_return();
-  // test_removing_relation();
+  test_removing_relation();
   // test_item_range();
   // test_max_condition();
-  test_log_classes()
+  // test_log_classes()
 
   function test_log_classes(){
     const classes=project?.retrieve_all_classes();

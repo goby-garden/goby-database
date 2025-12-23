@@ -1262,6 +1262,8 @@ export default class Project {
                         const target_label_id = target_class?.metadata?.label?.properties[0];
                         const target_label = target_class?.properties.find((p) => p.id == target_label_id);
                         const label_sql_string = target_label ? `,'user_${target_label.name}',target_class."user_${target_label.name}"` : '';
+                        const target_prop_string=defined(target.prop_id)?`,'prop_id',${target.prop_id}`:'';
+
                         // NOTE: as mentioned elsewhere, possibly allow multiple label props
 
 
@@ -1273,6 +1275,7 @@ export default class Project {
                                 'class_id',${target.class_id},
                                 'system_id',junction."${target_junction_column_name}",
                                 'system_order',junction."${property_junction_column_name}_order"
+                                ${target_prop_string}
                                 ${label_sql_string}
                             ) AS target_data, junction."${property_junction_column_name}_order" AS relation_order
                             FROM junction_${junction_id} AS junction

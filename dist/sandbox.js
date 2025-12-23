@@ -267,7 +267,6 @@ function create_groceries_project() {
                     }
                 }
             }
-            // project.action_make_relations(relation_queue);
             classes = project.retrieve_all_classes({
                 all_items: { page_size: null }
             });
@@ -300,10 +299,10 @@ function grocery_queries() {
         const project = yield create_groceries_project(true, 0);
         // test_full_return();
         // test_slim_return();
-        // test_removing_relation();
+        test_removing_relation();
         // test_item_range();
         // test_max_condition();
-        test_log_classes();
+        // test_log_classes()
         function test_log_classes() {
             const classes = project === null || project === void 0 ? void 0 : project.retrieve_all_classes();
             console.log('classes', classes);
