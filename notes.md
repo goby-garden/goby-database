@@ -8,24 +8,26 @@
 
 ### Running notes
 
+#### <span class="date">12/21/2025</span>
+
+Just a stray thought: I wonder if in the junction tables, I should have the columns for side 1 and 2 automatically sorted by ascending ID number? might considerably simplify my matching functions.
+
+Another stray thought: for cases where a property is matching to itself (same class and prop IDs in both columns), I might need to make a couple adjustments:
+
+- I would need to add some additional suffix to the column names of one “side” in the junction table, like “alt”, in order to prevent duplicate names
+- I _think_ the only thing I need to do for the retrieval to work in this case is to make TWO ctes for a single junction table, one matching each side, and then deduplicate somehow for the case where an item is connected to itself.
+
 #### <span class="date">12/19/2025</span>
 
 As part of my revisit to the select input UI, I’m considering allowing a new item to be added at an arbitrary place in the order for a property, instead of just at the very end, in order to make the cell feel more directly responsive to your click/hover.
 
 The thing is, I don’t currently have a way of customizing the sort order for these items. Previously on 9/1/2025 I added a `date_added` column to relation junction tables, just to enforce a consistent ordering instead of whatever arbitrary order is produced by SQLite’s inner workings. But I realize this was little more than a band-aid, and there’s something a little uncomfortable to me about encoding such a specific piece of data in Goby’s core architecture, just for the purpose of a display feature. 
 
-The eventual goal, as I mentioned then, has long been to figure out some way to support ordered relationships architecturally. And my discomfort with this was that it seemed to require storing the same information in two places (the same relationships, specified within either order). But today I bothered to look up how people ordinarily do ordering of many-to-many relationships, and of course it has [a perfectly straightforward solution](https://stackoverflow.com/questions/41956757/ordered-many-to-many-relationships-in-sql-postgres): just add two columns to the junction tables, and using one for the order of the items in one class, and the other for the items of the other class. 
+The eventual goal, as I mentioned then, has long been to figure out some way to support ordered relationships architecturally. And my discomfort with this was that it seemed to require storing the same information in two places (the same relationships, specified within either order). But today I bothered to look up how people ordinarily do ordering of many-to-many relationships, and of course it has [a perfectly straightforward solution](https://stackoverflow.com/questions/41956757/ordered-many-to-many-relationships-in-sql-postgres): just add two columns to the junction tables, using one for the order of the items in one class, and the other for the items of the other class. 
 
 It’s a little decentralized, in that you may have relations spread across multiple junction tables for a single item, and the only way to get a full picture of the sequence is to query all the tables together. But there’s no duplication in the way the data is stored.
 
 Once I add this, all relationship properties will in effect be ordered, and by default that will just be the order in which items were added to a selection. This opens up possibilities in the future for a kind of “list”/“hierarchy” display which is based on the contents of a single item relation property.
-
-
-
-
-
-
-
 
 #### <span class="date">9/20/2025</span>
 

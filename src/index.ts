@@ -24,7 +24,6 @@ import type {
     ClassMetadata,
     Property,
     DataType,
-    ItemRelationSide,
     SQLApplicationWindow,
     ApplicationWindow,
     SQLWorkspaceBlockRow,
@@ -40,7 +39,9 @@ import type {
     DataProperty,
     RelationEditValidSides,
     ItemPagination,
-    PaginatedItems
+    PaginatedItems,
+    ItemRelationSideInput,
+    RegisteredItemRelationSideInput
 } from './types.js';
 
 
@@ -1004,13 +1005,14 @@ export default class Project {
 
 
     /**
-     * Adds/removes relations between items/item properties
+     * Adds/removes relations between items/item properties. 
+     * Can create new items in a class if a label is specified instead of an item id.
      * @param relations - list of pairs of items for which relations should be added or removed between specified properties
      */
     action_edit_relations(
         relations: {
             change: 'add' | 'remove',
-            sides: [input_1: ItemRelationSide & { order?: number }, input_2: ItemRelationSide & { order?: number }]
+            sides: [input_1:ItemRelationSideInput, input_2: ItemRelationSideInput]
         }[]
     ) {
         // NOTE: changes to make to this in the future:
@@ -1018,20 +1020,51 @@ export default class Project {
         //  - enforce max_values here
 
         for (let { change, sides } of relations) {
-            const [input_1, input_2] = sides;
+            let [input_1, input_2] = sides;
 
             const column_names = {
                 input_1: junction_col_name(input_1.class_id, input_1.prop_id),
                 input_2: junction_col_name(input_2.class_id, input_2.prop_id)
             }
 
-            const junction_id = this.junction_cache.find(j => full_relation_match(j.sides, [input_1, input_2]))?.id;
+            const junction_id = this.junction_cache.find(j => full_relation_match(j.sides, sides))?.id;
 
             if (!defined(junction_id)) {
                 throw Error('Something went wrong - junction table for relationship not found');
             }
 
             if (change == 'add') {
+
+                // if items referenced by the input don’t yet have associated IDs, create them
+                const sides_registered:RegisteredItemRelationSideInput[]=sides.map((input)=>{
+                    if("item_id" in input){
+                        return input;
+                    }else{
+                        const {class_id,prop_id,order,label} = input;
+
+                        const class_data = this.lookup_class(class_id);
+                        const label_prop_id=class_data.metadata.label?.properties[0];
+                        const property_values=[];
+                        if(label_prop_id){
+                            property_values.push({
+                                property_id:label_prop_id,
+                                value:label
+                            })
+                        }
+                        const item_id=this.action_add_row(input.class_id,property_values);
+                        
+                        return {
+                            registered:true,
+                            class_id,
+                            prop_id,
+                            item_id,
+                            order
+                        }
+                    }
+                })
+
+                input_1=sides_registered[0];
+                input_2=sides_registered[1];
 
                 const column_value_set = [
                     {
@@ -1044,7 +1077,7 @@ export default class Project {
                     }
                 ];
 
-                sides.forEach((side, s) => {
+                sides_registered.forEach((side, s) => {
                     // for each side, check if it has a prop id
                     if (defined(side.prop_id)) {
                         // if it does, prepare to add a column entry for it
@@ -1094,11 +1127,16 @@ export default class Project {
                     VALUES (${column_value_set.map((a) => a.value).join(',')})
                 `).run();
             } else if (change == 'remove') {
-                this.db.prepare(`
-                    DELETE FROM junction_${junction_id} 
-                    WHERE "${column_names.input_1}" = ${input_1.item_id}
-                    AND "${column_names.input_2}" = ${input_2.item_id}`
-                ).run();
+                if(("item_id" in input_1)&&("item_id" in input_2)){
+                    this.db.prepare(`
+                        DELETE FROM junction_${junction_id} 
+                        WHERE "${column_names.input_1}" = ${input_1.item_id}
+                        AND "${column_names.input_2}" = ${input_2.item_id}`
+                    ).run();
+                }else{
+                    console.log('skipped relation delete (either item input is missing an ID)')
+                }
+
             }
 
         }

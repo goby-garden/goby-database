@@ -303,6 +303,11 @@ function grocery_queries() {
         // test_removing_relation();
         // test_item_range();
         // test_max_condition();
+        test_log_classes();
+        function test_log_classes() {
+            const classes = project === null || project === void 0 ? void 0 : project.retrieve_all_classes();
+            console.log('classes', classes);
+        }
         function test_full_return() {
             if (!project)
                 return;

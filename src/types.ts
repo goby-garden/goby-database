@@ -36,6 +36,19 @@ export type ItemRelationSide = {
   prop_id?:number;
 }
 
+export type RegisteredItemRelationSideInput=ItemRelationSide & {
+  order?:number;
+}
+
+export type UnregisteredItemRelationSideInput={
+  class_id:number;
+  prop_id?:number;
+  label:string;
+  order?:number;
+}
+
+export type ItemRelationSideInput=RegisteredItemRelationSideInput | UnregisteredItemRelationSideInput;
+
 
 type RelationCreate = {
   type:'create',

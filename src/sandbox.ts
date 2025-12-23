@@ -319,8 +319,6 @@ async function create_groceries_project(log_only = false, delay_time = 0) {
       }
     }
 
-    // project.action_make_relations(relation_queue);
-
     classes = project.retrieve_all_classes({
       all_items: { page_size: null }
     })
@@ -360,6 +358,12 @@ async function grocery_queries() {
   // test_removing_relation();
   // test_item_range();
   // test_max_condition();
+  test_log_classes()
+
+  function test_log_classes(){
+    const classes=project?.retrieve_all_classes();
+    console.log('classes',classes);
+  }
 
   function test_full_return(){
     if(!project) return;
