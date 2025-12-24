@@ -94,12 +94,17 @@ export default class Project {
     /**
      * Adds/removes relations between items/item properties.
      * Can create new items in a class if a label is specified instead of an item id.
+     * Returns modified list of items, including IDs of any newly created items
      * @param relations - list of pairs of items for which relations should be added or removed between specified properties
      */
     action_edit_relations(relations: {
         change: 'add' | 'remove';
         sides: [input_1: ItemRelationSideInput, input_2: ItemRelationSideInput];
-    }[]): void;
+    }[]): {
+        class_id: number;
+        prop_id?: number;
+        item_id: number;
+    }[];
     retrieve_class_items({ class_id, class_name, class_data, pagination }: {
         class_id: number;
         class_name?: string;
