@@ -1042,8 +1042,13 @@ export default class Project {
             if(is_new){
                 edited_class.created_items.push(input.item_id);
             }else{
-                edited_class.modified_items.push(input.item_id);
-                if(defined(input.prop_id)) edited_class.modified_properties.push(input.prop_id);
+                if(!edited_class.modified_items.includes(input.item_id)){
+                    edited_class.modified_items.push(input.item_id);
+                }
+
+                if(defined(input.prop_id)&&!edited_class.modified_properties.includes(input.prop_id)){
+                    edited_class.modified_properties.push(input.prop_id);
+                }
             }
         }
 
