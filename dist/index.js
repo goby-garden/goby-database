@@ -775,12 +775,35 @@ export default class Project {
     /**
      * Adds/removes relations between items/item properties.
      * Can create new items in a class if a label is specified instead of an item id.
-     * Returns modified list of items, including IDs of any newly created items
+     * Returns a record of which items and properties were edited/created
      * @param relations - list of pairs of items for which relations should be added or removed between specified properties
      */
     action_edit_relations(relations) {
         var _a;
-        const edited_items = [];
+        const edited_data = [];
+        function find_class_record(class_id) {
+            let edited_class = edited_data[class_id];
+            if (!defined(edited_class)) {
+                edited_data[class_id] = {
+                    modified_items: [],
+                    modified_properties: [],
+                    created_items: []
+                };
+                edited_class = edited_data[class_id];
+            }
+            return edited_class;
+        }
+        function record_modifications(input, is_new = false) {
+            const edited_class = find_class_record(input.class_id);
+            if (is_new) {
+                edited_class.created_items.push(input.item_id);
+            }
+            else {
+                edited_class.modified_items.push(input.item_id);
+                if (defined(input.prop_id))
+                    edited_class.modified_properties.push(input.prop_id);
+            }
+        }
         // NOTE: changes to make to this in the future:
         //  - for input readability, allow class_name and prop_name as input options, assuming they’re enforced as unique, and use them to look up IDs
         //  - enforce max_values here
@@ -799,6 +822,7 @@ export default class Project {
                 const sides_registered = sides.map((input) => {
                     var _a;
                     if ("item_id" in input) {
+                        record_modifications(input);
                         return input;
                     }
                     else {
@@ -813,16 +837,17 @@ export default class Project {
                             });
                         }
                         const item_id = this.action_add_row(input.class_id, property_values);
-                        return {
+                        const newly_registered_item = {
                             registered: true,
                             class_id,
                             prop_id,
                             item_id,
                             order
                         };
+                        record_modifications(newly_registered_item, true);
+                        return newly_registered_item;
                     }
                 });
-                record_if_new(sides_registered);
                 input_1 = sides_registered[0];
                 input_2 = sides_registered[1];
                 const column_value_set = [
@@ -885,26 +910,16 @@ export default class Project {
                         DELETE FROM junction_${junction_id} 
                         WHERE "${column_names.input_1}" = ${input_1.item_id}
                         AND "${column_names.input_2}" = ${input_2.item_id}`).run();
-                    record_if_new([input_1, input_2]);
+                    record_modifications(input_1);
+                    record_modifications(input_2);
+                    // record_if_new([input_1,input_2]);
                 }
                 else {
                     console.log('skipped relation delete (either item input is missing an ID)');
                 }
             }
         }
-        function record_if_new(item_inputs) {
-            for (let { class_id, item_id, prop_id } of item_inputs) {
-                const new_edge = { class_id, item_id, prop_id };
-                if (!edited_items.some((edge) => {
-                    return edge.class_id == new_edge.class_id &&
-                        edge.item_id == new_edge.item_id &&
-                        edge.prop_id == new_edge.prop_id;
-                })) {
-                    edited_items.push(new_edge);
-                }
-            }
-        }
-        return edited_items;
+        return edited_data;
     }
     // MARKER: modify item retrieval
     retrieve_class_items({ class_id, class_name, class_data, pagination = {} }) {
